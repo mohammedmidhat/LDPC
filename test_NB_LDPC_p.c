@@ -22,9 +22,7 @@
 #define GF_sub(a, b) (a-b)%Q
 
 
-float ntt_temp[half_Q_binary_ext<<1];
-float **p_rec_given_sent;
-float **p_sent_given_rec;
+float **p_sent_given_rec_T;
 
 int n, m;
 int rmax, cmax;
@@ -32,11 +30,11 @@ int *row_weight, *col_weight;
 int **row_col, **row_N;
 int **col_row, **col_N;
 int **H;
-int ***logra;
-int ***logqa;
-int ***logracol;
-int ***logqacol;
-NTT **fQa;
+float ***logra;
+float ***logqa;
+float ***logracol;
+float ***logqacol;
+float **fQa;
 int **isnegative;
 int *tmp_z;
 int *tmp_x;
@@ -48,8 +46,8 @@ int GF_mul(int a, int b)
 }
 
 // p_rec_given_sent[i][j] = P(i rec | j sent)
-// p_sent_given_rec = P
-void make_p_sent_given_rec(void){
+// p_sent_given_rec_T[i][j] = P(j sent | i rec)
+void make_p_sent_given_rec_T(double** p_rec_given_sent){
   int i,j;
   float P_x = 1/(1.0*Q);
   float P_y;
@@ -57,36 +55,49 @@ void make_p_sent_given_rec(void){
   for(i = 0; i < Q; i++){
     P_y = 0;
     for(j = 0; j < Q; j++){
-      P_y += p_rec_given_sent[i][j]*P_x;
+      P_y += (float) p_rec_given_sent[i][j]*P_x;
     }
     for(j = 0; j < Q; j++){
-      p_sent_given_rec[j][i] = P_x*p_rec_given_sent[i][j]/P_y;
+      p_sent_given_rec[i][j] = P_x*(float) p_rec_given_sent[i][j]/P_y;
     }
   }
 }
 
 // Modified from Takamura's NTT, by padding zeros to prime-sized
 // data sequence, and taking NTT over the next binary power size
-void ntt(float p[Q])
+void ntt(float p[half_Q_binary_ext << 1])
 {
-  memcpy(ntt_temp, p, Q*sizeof(float));
-
   int b, factor = 1, rest;
   for (b = 0; b < Log2Q; b++) {
-    for (rest = 0; rest < 8; rest++) {
+    for (rest = 0; rest < half_Q_binary_ext; rest++) {
       int restH = rest >> b;
       int restL = rest & (factor-1);
       int rest0 = (restH << (b+1)) + restL;
       int rest1 = rest0 + factor;
-      float prest0 = ntt_temp[rest0];
+      float prest0 = p[rest0];
 
-      ntt_temp[rest0] += ntt_temp[rest1];
-      ntt_temp[rest1] = prest0 - ntt_temp[rest1];
+      p[rest0] += p[rest1];
+      p[rest1] = prest0 - p[rest1];
     }
     factor += factor;
   }
+}
 
-  memcpy(p, ntt_temp, Q*sizeof(float));
+void channel(int x[], int y[], double** p_rec_given_sent, float **logfna){
+  int i, rand_select, rec_ind;
+  float temp;
+
+  for(i = 0; i < n; i++){
+    temp = 0;
+    rec_ind = 0;
+    rand_select = rand()%101;
+    while(temp <= rand_select){
+      temp += (float) p_rec_given_sent[rec_ind++][x[i]];
+    }
+    assert(rec_ind > 0);
+    y[i] = --rec_ind;
+    logfna[i] = p_sent_given_rec_T[y[i]];
+  }
 }
 
 int HamDist(int x[], int y[], int len)
@@ -205,34 +216,52 @@ void lap(int x[], int y[], double stddev, int **logfna)
 
 void enc(int x[], int s[])
 {
-  int i, j;
+  int i, j, xHmn;
   for (j = 0; j < m; j++) {
     int sum = 0;
     for (i = 0; i < row_weight[j]; i++) {
-      int xHmn = GF_mul(x[row_col[j][i]], H[j][i]);
+      xHmn = GF_mul(x[row_col[j][i]], H[j][i]);
       sum = GF_add(sum, xHmn);
     }
     s[j] = sum;
   }
 }
 
-NTT **malloc2DNTT(int a, int b) // allocates array[a][b]
-{
+// allocates float array[m][n]
+float** malloc_2D_float(int m, int n){
   int i;
-  NTT **pp = malloc(sizeof(NTT *) * a);
-  NTT *p = malloc(sizeof(NTT) * a * b);
+  float **pp = malloc(sizeof(float *) * m);
+  float *p = malloc(sizeof(float) * m * n);
   if (pp == NULL || p == NULL) exit(-1);
-  for (i = 0; i < a; i++) {
-    pp[i] = p + b*i;
+  for (i = 0; i < m; i++) {
+    pp[i] = p + n*i;
   }
   return pp;
 }
 
-int ***malloc2Dintp(int a, int b) // allocates array[a][b] (int pointer)
+// allocates float array[a][b][c]
+float ***malloc_3D_float(int a, int b, int c)
+{
+  int i, j;
+  float ***ppp= malloc(sizeof(float **) * a);
+  float **pp  = malloc(sizeof(float *) * a * b);
+  float *p    = malloc(sizeof(float) * a * b * c);
+  if (ppp == NULL || pp == NULL || p == NULL) exit(-1);
+  for (j = 0; j < a; j++) {
+    for (i = 0; i < b; i++) {
+      pp[i+b*j] = p + c*i + c*b*j;
+    }
+    ppp[j] = pp + b*j;
+  }
+  return ppp;
+}
+
+// allocates array[a][b] (float pointer)
+float ***malloc_2D_float_p(int a, int b)
 {
   int j;
-  int ***ppp= malloc(sizeof(int **) * a);
-  int **pp  = malloc(sizeof(int *) * a * b);
+  float ***ppp= malloc(sizeof(float **) * a);
+  float **pp  = malloc(sizeof(float *) * a * b);
   if (ppp == NULL || pp == NULL) exit(-1);
   for (j = 0; j < a; j++) {
     ppp[j] = pp + b*j;
@@ -252,80 +281,63 @@ int **malloc2Dint(int a, int b) // allocates array[a][b]
   return pp;
 }
 
-int ***malloc3Dint(int a, int b, int c) // allocates array[a][b][c]
-{
-  int i, j;
-  int ***ppp= malloc(sizeof(int **) * a);
-  int **pp  = malloc(sizeof(int *) * a * b);
-  int *p    = malloc(sizeof(int) * a * b * c);
-  if (ppp == NULL || pp == NULL || p == NULL) exit(-1);
-  for (j = 0; j < a; j++) {
-    for (i = 0; i < b; i++) {
-      pp[i+b*j] = p + c*i + c*b*j;
-    }
-    ppp[j] = pp + b*j;
-  }
-  return ppp;
-}
-
 // Sum Product Decoder
 // logfna: prior
 // z: syndrome
 // loop_max: max iteration
 // x[]: original signal (just for reference)
-int dec(int **logfna, int z[], int loop_max, int x[])
+int dec(int **logfna, int z[], int loop_max)
 {
   int a, i, j, k, loop;
-  int iir, prev = 999999, nodecr = 0;
+  float normalizing_val;
 
   for (i = 0; i < n; i++) {
     for (k = 0; k < col_weight[i]; k++) {
-      memcpy(logqacol[i][k], logfna[i], sizeof(int)*Q);
+      memcpy(logqacol[i][k], logfna[i], sizeof(float)*Q);
     }
   }
 
   for (loop = 0; loop < loop_max; loop++) {
     for (j = 0; j < m; j++) {
       int row_weightj = row_weight[j];
-      int logprodqa[Q], sgnsum[Q];
-      memset(sgnsum, 0, sizeof(sgnsum));
-      memset(logprodqa, 0, sizeof(logprodqa));
-      memset(*isnegative, 0, rmax * Q * sizeof(int));
+      float logprodqa[half_Q_binary_ext << 1];
+      //int sgnsum[Q];
+      //memset(sgnsum, 0, sizeof(sgnsum));
+      memset(logprodqa, 1.0, sizeof(logprodqa));
+      //memset(*isnegative, 0.0, rmax * Q * sizeof(int));
       for (k = 0; k < row_weightj; k++) {
         for (a = 0; a < Q; a++) {
-          fQa[k][GF_mul(a, H[j][k])] = Fexp(logqa[j][k][a]);
+          fQa[k][GF_mul(a, H[j][k])] = logqa[j][k][a];
         }
+        memset(fQa[k]+Q, 0, (2*half_Q_binary_ext-Q)*sizeof(float));    // Pad Zeros
+        
         ntt(fQa[k]);
-        //Flog(|fQa[k][a]|)‚ð‚Ç‚±‚©‚É•Û‘¶‚µŒã‚ÉŽg‚¤‚Ì‚àƒAƒŠ
-        for (a = 0; a < Q; a++) {
-          if (fQa[k][a] < 0) {
-            fQa[k][a] = -fQa[k][a];
-            isnegative[k][a] = 1;
-            sgnsum[a] ^= 1;     // •‰‚Ì‚Æ‚«‚¾‚¯ƒJƒEƒ“ƒgƒAƒbƒv
-          }
-          fQa[k][a] = (fQa[k][a] + (1<<(Log2Q/2-1))) >> (Log2Q/2);
-          logprodqa[a] += Flog(fQa[k][a]);
-          assert(logprodqa[a] > -(1<<29));
+
+        for (a = 0; a < half_Q_binary_ext << 1; a++) {
+          logprodqa[a] *= fQa[k][a];
         }
       }
       for (k = 0; k < row_weightj; k++) {
-        NTT fRa[Q];
-        for (a = 0; a < Q; a++) {
-          fRa[a] = Fexp(logprodqa[a] - Flog(fQa[k][a]) + Log2Q*FMUL); //prod. except k
-          if (isnegative[k][a] != sgnsum[a])
-            fRa[a] = -fRa[a];
+        float fRa[half_Q_binary_ext << 1];
+        for (a = 0; a < half_Q_binary_ext << 1; a++) {
+          fRa[a] = logprodqa[a]/fQa[k][a];
         }
-        ntt(fRa);          // intt
+        ntt(fRa);
+        normalizing_val = 0;
         for (a = 0; a < Q; a++) {
-          logra[j][k][a] = Flog(fRa[GF_sub(z[j], GF_mul(a, H[j][k]))]);
+          logra[j][k][a] = fRa[GF_sub(z[j], GF_mul(a, H[j][k]))];
+          normalizing_val += logra[j][k][a];
+        }
+        for (a = 0; a < Q; a++) {
+          logra[j][k][a] = logra[j][k][a]/normalizing_val;
         }
       }
     }
     // update qa & tentative decode
     for (i = 0; i < n; i++) {
       int col = col_weight[i];
-      int argmaxa = -1;
-      int maxp = -(1<<30);
+      float argmaxa = -1;
+      float maxp = -(1<<30);
       for (a = 0; a < Q; a++) {
         int logprod = logfna[i][a];
         for (k = 0; k < col; k++) {
@@ -344,23 +356,22 @@ int dec(int **logfna, int z[], int loop_max, int x[])
     //normalize qa
     for (j = 0; j < m; j++) {
       for (k = 0; k < row_weight[j]; k++) {
-        int *qajk = logqa[j][k];
-        int sum = 0;
+        float *qajk = logqa[j][k];
+        float sum = 0;
         for (a = 0; a < Q; a++) {
-          sum += Fexp(*qajk++);
-        }
+          sum += *qajk++;
+        }/*
         if (sum <= 0) {//all zero happenes
           //printf("%d,%d:sum%d ", j, k, sum);
           sum = Q;//taka051207
-        }
-        sum = Flog(sum);
+        }*/
         qajk = logqa[j][k];
         for (a = 0; a < Q; a++) {
-          *qajk++ -= sum;
+          *qajk = *qajk/sum;
+          qajk++;
         }
       }
     }
-    //printf("%2d: HamDist(x,x^)=%d ", loop+1, HamDist(x, tmp_x, n));
 
     enc(tmp_x, tmp_z);
     {
@@ -368,25 +379,16 @@ int dec(int **logfna, int z[], int loop_max, int x[])
       //printf("HamDist(s,synd(x^))=%d\n", dist);
       if (dist == 0)           // nothing more can be done
         return 0;
-      // nonconvergence detection
-      if (loop == 0) iir = dist;
-      else iir = (int)(iir * 0.85 + dist * 0.15 + 0.5);
-
-      if (prev <= dist) nodecr++;
-      else nodecr = 0;
-      if (dist > iir * 1.1 || nodecr > 10) break; // no conversion
-      prev = dist;
     }
   }
 
-  return -1;
+  return 1;
 }
 
 //http://www.inference.phy.cam.ac.uk/mackay/codes/alist.html
 void initdec(char *s)
 {
   int i, j, q, *count;
-  int isbinary = 0;
   char buf[BUFSIZ];
   FILE *fp = fopen(s, "rt");
   if (fp == NULL) {
@@ -397,8 +399,6 @@ void initdec(char *s)
   if (sscanf(buf, "%d%d%d", &n, &m, &q) == 2) {
     fprintf(stderr, "Warning! A binary matrix seems to be specified.\n");
     fprintf(stderr, "I'll use it anyways.\n");
-    isbinary = 1;
-    q = 2;
   }
   if (q > Q) exit(-1);
   if (q != Q) {
@@ -422,29 +422,27 @@ void initdec(char *s)
   col_row = malloc2Dint(n, cmax);
   col_N   = malloc2Dint(n, cmax);
   H            = malloc2Dint(m, rmax); // Hmn
-  fQa          = malloc2DNTT(rmax, Q);
+  fQa          = malloc_2D_float(rmax, half_Q_binary_ext << 1);
   isnegative   = malloc2Dint(rmax, Q);
 
   {//skip n lines
     for (i = 0; i < n; i++) {
       for (j = 0; j < cmax; j++)
-        fscanf(fp, isbinary ? "%*d" : "%*d%*d");
+        fscanf(fp, "%*d%*d");
     }
   }
 
   for (j = 0; j < m; j++) {
     for (i = 0; i < row_weight[j]; i++) {
       int v;
-      if (isbinary) {
-        fscanf(fp, "%d", &v);
-        H[j][i] = 1;
-      } else
-        fscanf(fp, "%d%d", &v, &H[j][i]);
+      fscanf(fp, "%d%d", &v, &H[j][i]);
       v--;
-      row_col[j][i] = v;
-      row_N[j][i] = count[v];
-      col_row[v][count[v]] = j;
-      col_N[v][count[v]] = i;
+      // v (at this point) is the absolute index of the column in the H matrix
+
+      row_col[j][i] = v;  // row_col[j][i] is the absolute index of the i-th variable neighor of the j-th check
+      row_N[j][i] = count[v];   // row_N[j][i] the relative index of the j-th check neighbor to the i-th variable
+      col_row[v][count[v]] = j;   // col_row[j][i] the absolute index of the i-th check neighbor to the j-th variable
+      col_N[v][count[v]] = i;   // col_N[j][i] relative index of the j-th variable in its i-th check
       count[v]++;
     }
 
@@ -462,13 +460,14 @@ void initdec(char *s)
   tmp_z = malloc(sizeof(int) * m);
   tmp_x = malloc(sizeof(int) * n);
 
-  logra  = malloc3Dint(m, rmax, Q);
-  logqa  = malloc3Dint(m, rmax, Q);
-  logracol=malloc2Dintp(n, cmax);
-  logqacol=malloc2Dintp(n, cmax);
+  logra  = malloc_3D_float(m, rmax, Q);
+  logqa  = malloc_3D_float(m, rmax, Q);
+  logracol=malloc_2D_float_p(n, cmax);
+  logqacol=malloc_2D_float_p(n, cmax);
   for (i = 0; i < n; i++) {
     int k;
-    int *cri = col_row[i], *cNi = col_N[i];
+    int *cri = col_row[i];  // pointer to neighbor check indices
+    int *cNi = col_N[i];  // pointer to relative indices to the variable in its checks
     int col = col_weight[i];
     for (k = 0; k < col; k++) {
       logracol[i][k] = logra[cri[k]][cNi[k]];
@@ -477,46 +476,48 @@ void initdec(char *s)
   }
 }
 
-int main(int argc, char **argv)
+void test_NB_LDPC_p(int iteration, int num_trials, double** p_rec_given_sent, double *errors)
 {
-  int i, j, *s, *s0, *x, *y;
+  int i, j, *s, *x, *y, dec_result;
   float **logfna;
-  int iteration = 30;
 
 
-  initdec(argv[3]);
+  initdec("bazar_GF_13.txt");
+  p_sent_given_rec_T = malloc_2D_float(Q, Q);
   s = malloc(sizeof(int) * m);  // syndrome
-  s0= malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
   y = malloc(sizeof(int) * n);  // side information
-  logfna=malloc2Dint(n, Q);
+  logfna = malloc_2D_float(n, Q);
+  make_p_sent_given_rec_T(p_rec_given_sent);
+
+  errors[0] = 0;
+  errors[1] = 0;
 
   // Start Timer
   clock_t start = clock(), diff;
 
   // iterate experiments
-  for (j = 1; j <= 3; j++) {
-    //printf("\nGF(%d) experiment %d:\n", Q, j);
-    SRand(j);
+  for (j = 1; j <= num_trials; j++) {
+    srand(j);
+    // Generate random data
     for (i = 0; i < n; i++)
-      x[i] = Rand() % Q;
+      x[i] = rand() % Q;
+
     enc(x, s);
-    channel(x, y, error, logfna);
-    enc(y, s0);
-    //printf("start: HamDist(x,y)=%d HamDist(synd(x),synd(y))=%d\n",
-    //       HamDist(x,y,n), HamDist(s,s0,m));
-    puts(
-      dec(logfna, s, iteration, x) ?
-      "failed." : "converged."
-      );
+    channel(x, y, p_rec_given_sent, logfna);
+    dec_result = dec(logfna, s, iteration);
+    
+    if(dec_result){
+      errors[0]++;
+    } else {
+      if(HamDist(tmp_x, x, n) != 0) errors[1]++;
+    }
   }
 
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
   printf("Time taken %d seconds %d milliseconds", msec/1000, msec%1000);
-
-  return 0;
 }
 
 /* The gateway function */
@@ -538,7 +539,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
     /* get the values of the inputs  */
     max_iter = mxGetScalar(prhs[0]);
     num_trials = mxGetScalar(prhs[1]);
-    conf_mat = mxGetScalar(prhs[2]);
+    conf_mat = mxGetPr(prhs[2]);
     
     /* create the output matrix */
     plhs[0] = mxCreateNumericMatrix(1,2,mxDOUBLE_CLASS,mxREAL);
@@ -547,5 +548,5 @@ void mexFunction( int nlhs, mxArray *plhs[],
     double *outMatrix = mxGetPr(plhs[0]);
 
     /* call the computational routine */
-    test_code_B(max_iter, num_trials, p_flip, outMatrix);
+    test_NB_LDPC_p(max_iter, num_trials, conf_mat, outMatrix);
 }

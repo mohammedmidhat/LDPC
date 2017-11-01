@@ -327,7 +327,7 @@ void test_code_B(int iteration, int trials, double p_bsc, double *errors){
   
   inittab();
   
-  initdec("dvb_H_0.75.txt");
+  initdec("204,102_B_Bazar.txt");
   q0= malloc(sizeof(int) * n);
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
