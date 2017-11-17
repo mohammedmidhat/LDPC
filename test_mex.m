@@ -8,7 +8,6 @@ tic;
 parfor (j = 1:size(bit_err_prob,2),4)
     result = test_code_B(max_num_iter,num_trials,bit_err_prob(1,j));
     %result = test_code_min_sum_B(max_num_iter,num_trials,bit_err_prob(1,j));
-    display('no');
     err_count(1,j) = result(1)/num_trials;
     undet_err(1,j) = result(2)/num_trials;
 end

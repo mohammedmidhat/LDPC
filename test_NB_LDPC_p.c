@@ -4,7 +4,7 @@
 // based on paper of M. C. Davey et al. "Low-Density...over GF(q)" June 1998
 // (c) 2005-2006 by Seishi Takamura @ Stanford University / NTT (Nippon Telegraph and Telephone)
 // Absolutely no warranty.
-#include <mex.h>
+//#include <mex.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -15,14 +15,14 @@
 #include <time.h>
 
 
-#define Q		13
+#define Q   13
 #define Log2Q 4
-#define half_Q_binary_ext  1<<(Log2Q-1)
 #define GF_add(a, b) (a+b)%Q
 #define GF_sub(a, b) (a-b)%Q
 
 
-float **p_sent_given_rec_T;
+// Inverse in GF(13), inv(a) = inv[a], inv[0] = 0 for consistency
+int inv[13] = {0,1,7,9,10,8,11,2,5,3,4,6,12};
 
 int n, m;
 int rmax, cmax;
@@ -34,10 +34,12 @@ float ***logra;
 float ***logqa;
 float ***logracol;
 float ***logqacol;
-float **fQa;
-int **isnegative;
+float **fQa, **fRa, **p_sent_given_rec_T;
 int *tmp_z;
 int *tmp_x;
+int *conv_sequence;
+float p_symbol_alloc;
+float *p_symbol = &p_symbol_alloc;
 
 
 int GF_mul(int a, int b)
@@ -58,45 +60,74 @@ void make_p_sent_given_rec_T(double** p_rec_given_sent){
       P_y += (float) p_rec_given_sent[i][j]*P_x;
     }
     for(j = 0; j < Q; j++){
-      p_sent_given_rec[i][j] = P_x*(float) p_rec_given_sent[i][j]/P_y;
+      p_sent_given_rec_T[i][j] = P_x*(float) p_rec_given_sent[i][j]/P_y;
     }
   }
 }
 
-// Modified from Takamura's NTT, by padding zeros to prime-sized
-// data sequence, and taking NTT over the next binary power size
-void ntt(float p[half_Q_binary_ext << 1])
-{
-  int b, factor = 1, rest;
-  for (b = 0; b < Log2Q; b++) {
-    for (rest = 0; rest < half_Q_binary_ext; rest++) {
-      int restH = rest >> b;
-      int restL = rest & (factor-1);
-      int rest0 = (restH << (b+1)) + restL;
-      int rest1 = rest0 + factor;
-      float prest0 = p[rest0];
-
-      p[rest0] += p[rest1];
-      p[rest1] = prest0 - p[rest1];
+void find_all_config(int seq_sz_total, int seq_sz, int rest, int not_row){
+  //printf("%d, %d, %d, %d\n", seq_sz_total, seq_sz, rest, not_row);
+  int i, j;
+  int acc;
+  
+  if(seq_sz == 1){
+    int seq_iter = 0;
+    float p_seq = 1.0;
+    
+    conv_sequence[seq_sz_total - seq_sz] = ((Q - rest)%Q+Q)%Q;
+    //printf("seq = ");
+    for(i = 0; i < seq_sz_total+1; i++){
+      if(i != not_row){
+        //printf("%d ", conv_sequence[seq_iter]);
+        p_seq *= fQa[i][conv_sequence[seq_iter]];
+        seq_iter++;
+      }
     }
-    factor += factor;
+    *p_symbol += p_seq;
+    //printf("\n");
+    return;
+  }
+  for(i = 0; i < Q; i++){
+    conv_sequence[seq_sz_total - seq_sz] = i;
+    find_all_config(seq_sz_total, seq_sz-1, rest+i, not_row);
+  }
+}
+
+void CNP(int row_weight, int syndrome){
+  int i, a;
+  
+  for(i = 0; i < row_weight; i++){
+    //printf("new config\n");
+    for (a = 0; a < Q; a++){
+      //printf("config[%d]\n", a);
+      *p_symbol = 0;
+      find_all_config(row_weight-1, row_weight-1, (((a-syndrome)%Q)+Q)%Q, i);
+      fRa[i][a] = *p_symbol;
+    }
   }
 }
 
 void channel(int x[], int y[], double** p_rec_given_sent, float **logfna){
-  int i, rand_select, rec_ind;
+  int i, rand_select, rec_ind, j;
   float temp;
 
   for(i = 0; i < n; i++){
     temp = 0;
     rec_ind = 0;
     rand_select = rand()%101;
-    while(temp <= rand_select){
-      temp += (float) p_rec_given_sent[rec_ind++][x[i]];
+    //printf("rand_select = %d\n", rand_select);
+    while(temp <= rand_select && rec_ind != 13){
+      //printf("temp = %.2f\n", temp);
+      temp += 100*(float) p_rec_given_sent[rec_ind++][x[i]];
     }
-    assert(rec_ind > 0);
     y[i] = --rec_ind;
     logfna[i] = p_sent_given_rec_T[y[i]];
+    
+    /*printf("y[%d] = %d\n", i, rec_ind);
+    for(j = 0; j < Q; j++){
+      printf("%.2f ", logfna[i][j]);
+    }
+    printf("\n");*/
   }
 }
 
@@ -109,109 +140,6 @@ int HamDist(int x[], int y[], int len)
       if ((xy & j) != 0) sum++;
   }
   return sum;
-}
-
-double mse(int x[], int y[], int len)
-{
-  int i;
-  double sum = 0;
-  for (i = 0; i < len; i++) {
-    int s = *x++ - *y++;
-    sum += (double)(s*s);
-  }
-  return sum / len;
-}
-
-// y[n] := x[n] + BSC_noise
-// logfna[a][n]: log(Prob(x[n]=a | y[n]))
-// can only be used for GF(2^b) case
-void bsc(int x[], int y[], double p, int **logfna)
-{
-  int i, len = Log2Q * n;
-  int modify = (int)(len * p + 0.5);
-  int *err = malloc(sizeof(int) * n);
-  double lp, l1p;
-  p = modify / (double)len; // correct error probability
-  //printf("m/n=%g, ", (double)m/n);
-  //printf("BSC channel capacity(rate) = %g (bits)\n",
-  //       -p*log2(p)-(1-p)*log2(1-p));
-  memset(err, 0, sizeof(int) * n);
-  // make sure p errors in err[]
-  while (modify) {
-    i = Rand() % len;
-    if ((err[i/Log2Q] & (1<<(i%Log2Q))) != 0) continue;
-    err[i/Log2Q] |= (1<<(i%Log2Q));
-    modify--;
-  }
-  memcpy(y, x, sizeof(int) * n);
-  for (i = 0; i < n; i++) {
-    y[i] ^= err[i];
-  }
-  free(err);
-
-  lp = log2(p);
-  l1p = log2(1-p);
-  for (i = 0; i < n; i++) {
-    int a, j;
-    for (a = 0; a < Q; a++) {
-      double logprod = 0;
-      for (j = 1; j < Q; j <<= 1) {
-        if ((a&j) == (y[i]&j)) logprod += l1p;
-        else logprod += lp;
-      }
-      logfna[i][a] = float2fix(logprod);
-    }
-  }
-}
-
-// y[n] := x[n] + Laplacian_noise
-// logfna[n][a]: log(Prob(x[n]=a | y[n]))
-// stddev: noise level
-void lap(int x[], int y[], double stddev, int **logfna)
-{
-  int i;
-  int count[Q];
-  double _logfna[Q];
-  double sum;
-  memset(count, 0, sizeof(count));
-  for (i = 0; i < n; i++) {
-    double u2 = (Rand()+1) * (1.0 / (RandMax+1.0)); // uniform(0,1]
-    int logu2 = (int)floor(log(u2) * stddev + .5);
-    int a;
-    sum = 0;
-    if ((Rand() & 1) == 0) {
-      y[i] = x[i] - logu2;
-    } else {
-      y[i] = x[i] + logu2;
-    }
-    // clipping
-    if (y[i] < 0) y[i] = 0;
-    else if (y[i] >= Q) y[i] = Q-1;
-    //
-    count[abs(x[i] - y[i])]++;
-    //fna
-    for (a = 0; a < Q; a++) {
-      double dfna;
-      //logfna[i][a] = -(abs(y[i] - a))/stddev;
-      if (y[i] == a) _logfna[a] = -0.5/*0.2396*//stddev; //l((1-e(-0.5))*2)
-      else _logfna[a] = -(abs(y[i] - a)-/*+*/0.0413)/stddev; //l(e(0.5)-e(-0.5))
-      dfna = exp2(_logfna[a]);
-      sum += dfna;
-    }
-    //normalize
-    sum = log2(sum);
-    for (a = 0; a < Q; a++) {
-      logfna[i][a] = float2fix(_logfna[a] - sum);
-    }
-  }
-  sum = 0;
-  for (i = 0; i < Q; i++) {
-    if (count[i]) sum += count[i] * log2(count[i]);
-  }
-  printf("m/n=%g, ", (double)m/n);
-  printf("noise entropy = %g bits, rate = %g\n", -sum/n + log2(n),
-         (-sum/n + log2(n)) / log2(Q));
-  printf("PSNR = %g\n", 10*log((Q-1)*(Q-1)/mse(x,y,n)));
 }
 
 void enc(int x[], int s[])
@@ -227,11 +155,33 @@ void enc(int x[], int s[])
   }
 }
 
+// a: number of rows
+// b: number of columns
+void set_2D_float_arr_one(float **arr, int a, int b){
+  int i, j;
+  for(i = 0; i < a; i++){
+    for(j = 0; j < b; j++){
+      arr[i][j] = 1.0;
+    }
+  }
+}
+
 // allocates float array[m][n]
 float** malloc_2D_float(int m, int n){
   int i;
   float **pp = malloc(sizeof(float *) * m);
   float *p = malloc(sizeof(float) * m * n);
+  if (pp == NULL || p == NULL) exit(-1);
+  for (i = 0; i < m; i++) {
+    pp[i] = p + n*i;
+  }
+  return pp;
+}
+
+double** malloc_2D_double(int m, int n){
+  int i;
+  double **pp = malloc(sizeof(double *) * m);
+  double *p = malloc(sizeof(double) * m * n);
   if (pp == NULL || p == NULL) exit(-1);
   for (i = 0; i < m; i++) {
     pp[i] = p + n*i;
@@ -286,48 +236,67 @@ int **malloc2Dint(int a, int b) // allocates array[a][b]
 // z: syndrome
 // loop_max: max iteration
 // x[]: original signal (just for reference)
-int dec(int **logfna, int z[], int loop_max)
+int dec(float **logfna, int z[], int loop_max)
 {
-  int a, i, j, k, loop;
+  int a, i, j, k, l, loop;
   float normalizing_val;
-
+  //printf("exp = %.2f\n",logfna[26]);
+  //memcpy(logqacol[27][0], logfna[27], sizeof(float)*Q);
+  //printf("p-vec = \n");
   for (i = 0; i < n; i++) {
+    /*for(j = 0; j < Q; j++){
+      printf("%.2f ", logfna[i][j]);
+    }
+    printf("\n");*/
     for (k = 0; k < col_weight[i]; k++) {
       memcpy(logqacol[i][k], logfna[i], sizeof(float)*Q);
     }
   }
+  //printf("hi\n");
 
   for (loop = 0; loop < loop_max; loop++) {
     for (j = 0; j < m; j++) {
       int row_weightj = row_weight[j];
-      float logprodqa[half_Q_binary_ext << 1];
+      float logprodqa[Q];
       //int sgnsum[Q];
       //memset(sgnsum, 0, sizeof(sgnsum));
       memset(logprodqa, 1.0, sizeof(logprodqa));
-      //memset(*isnegative, 0.0, rmax * Q * sizeof(int));
+      set_2D_float_arr_one(fRa, rmax, Q);
+      /*if(j < 1 && loop == 0){
+        printf("check = %d\n", j);
+        printf("row_weightj = %d\n", row_weightj);
+      }*/
       for (k = 0; k < row_weightj; k++) {
         for (a = 0; a < Q; a++) {
           fQa[k][GF_mul(a, H[j][k])] = logqa[j][k][a];
         }
-        memset(fQa[k]+Q, 0, (2*half_Q_binary_ext-Q)*sizeof(float));    // Pad Zeros
         
-        ntt(fQa[k]);
-
-        for (a = 0; a < half_Q_binary_ext << 1; a++) {
-          logprodqa[a] *= fQa[k][a];
-        }
+        /*if(j < 1 && loop == 0){
+          printf("fQa[%d] = ", k);
+          for(a = 0; a < Q; a++){
+            printf("%.2f,", fQa[k][a]);
+          }
+          printf("\n");
+        }*/
       }
+
+      CNP(row_weightj, z[j]);
+
       for (k = 0; k < row_weightj; k++) {
-        float fRa[half_Q_binary_ext << 1];
-        for (a = 0; a < half_Q_binary_ext << 1; a++) {
-          fRa[a] = logprodqa[a]/fQa[k][a];
-        }
-        ntt(fRa);
         normalizing_val = 0;
+        /*if(j < 1 && loop == 0){
+          printf("logra[%d][%d] = ", j, k);
+        }*/
         for (a = 0; a < Q; a++) {
-          logra[j][k][a] = fRa[GF_sub(z[j], GF_mul(a, H[j][k]))];
+          logra[j][k][a] = fRa[k][GF_mul(a, H[j][k])];
           normalizing_val += logra[j][k][a];
+          /*if(j < 1 && loop == 0){
+            printf("%.2f,", logra[j][k][a]);
+          }*/
         }
+        /*if(j < 1 && loop == 0){
+          printf("\n");
+        }*/
         for (a = 0; a < Q; a++) {
           logra[j][k][a] = logra[j][k][a]/normalizing_val;
         }
@@ -339,7 +308,7 @@ int dec(int **logfna, int z[], int loop_max)
       float argmaxa = -1;
       float maxp = -(1<<30);
       for (a = 0; a < Q; a++) {
-        int logprod = logfna[i][a];
+        float logprod = logfna[i][a];
         for (k = 0; k < col; k++) {
           logprod += logracol[i][k][a];
         }
@@ -360,11 +329,7 @@ int dec(int **logfna, int z[], int loop_max)
         float sum = 0;
         for (a = 0; a < Q; a++) {
           sum += *qajk++;
-        }/*
-        if (sum <= 0) {//all zero happenes
-          //printf("%d,%d:sum%d ", j, k, sum);
-          sum = Q;//taka051207
-        }*/
+        }
         qajk = logqa[j][k];
         for (a = 0; a < Q; a++) {
           *qajk = *qajk/sum;
@@ -422,8 +387,9 @@ void initdec(char *s)
   col_row = malloc2Dint(n, cmax);
   col_N   = malloc2Dint(n, cmax);
   H            = malloc2Dint(m, rmax); // Hmn
-  fQa          = malloc_2D_float(rmax, half_Q_binary_ext << 1);
-  isnegative   = malloc2Dint(rmax, Q);
+  fQa          = malloc_2D_float(rmax, Q);
+  fRa          = malloc_2D_float(rmax, Q);
+  conv_sequence = malloc((rmax-1)*sizeof(int));
 
   {//skip n lines
     for (i = 0; i < n; i++) {
@@ -475,21 +441,25 @@ void initdec(char *s)
     }
   }
 }
-
+/*
 void test_NB_LDPC_p(int iteration, int num_trials, double** p_rec_given_sent, double *errors)
 {
+  printf('hi');
   int i, j, *s, *x, *y, dec_result;
   float **logfna;
 
-
+  printf('hi');
   initdec("bazar_GF_13.txt");
+  printf('hi');
   p_sent_given_rec_T = malloc_2D_float(Q, Q);
+  printf('hi');
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
   y = malloc(sizeof(int) * n);  // side information
   logfna = malloc_2D_float(n, Q);
+  printf('hi');
   make_p_sent_given_rec_T(p_rec_given_sent);
-
+  printf('hi');
   errors[0] = 0;
   errors[1] = 0;
 
@@ -519,16 +489,113 @@ void test_NB_LDPC_p(int iteration, int num_trials, double** p_rec_given_sent, do
   int msec = diff * 1000 / CLOCKS_PER_SEC;
   printf("Time taken %d seconds %d milliseconds", msec/1000, msec%1000);
 }
+*/
+int main(int argc, char **argv)
+{
+  int i, j, *s, *x, *y, dec_result;
+  float **logfna;
 
-/* The gateway function */
+
+  int iteration = 30;
+  int num_trials = 1;
+  double errors[2];
+  double** p_rec_given_sent;
+  p_rec_given_sent = malloc_2D_double(Q, Q);
+  memset(p_rec_given_sent[0], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[1], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[2], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[3], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[4], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[5], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[6], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[7], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[8], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[9], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[10], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[11], 0, 13*sizeof(double));
+  memset(p_rec_given_sent[12], 0, 13*sizeof(double));
+  //printf("hi\n");
+  for(i = 0; i < Q; i++){
+    p_rec_given_sent[i][i] = 1.00;
+  }
+  /*for(i = 1; i < Q; i++){
+    p_rec_given_sent[i][i-1] = 0.02;
+  }
+  p_rec_given_sent[11][12] = 0.02;*/
+
+
+
+  initdec("bazar_GF_13.txt");
+  p_sent_given_rec_T = malloc_2D_float(Q, Q);
+  
+  s = malloc(sizeof(int) * m);  // syndrome
+  x = malloc(sizeof(int) * n);  // source
+  y = malloc(sizeof(int) * n);  // side information
+  logfna = malloc_2D_float(n, Q);
+
+  make_p_sent_given_rec_T(p_rec_given_sent);
+  /*printf("p_sent_given_rec_T = \n");
+  for(i = 0; i < Q; i++){
+    for(j = 0; j < Q; j++){
+      printf("%.2f ", p_sent_given_rec_T[i][j]);
+    }
+    printf("\n");
+  }*/
+
+  errors[0] = 0;
+  errors[1] = 0;
+
+  // Start Timer
+  clock_t start = clock(), diff;
+  
+  // iterate experiments
+  for (j = 1; j <= num_trials; j++) {
+    srand(j);
+    // Generate random data
+    for (i = 0; i < n; i++){
+      x[i] = rand() % Q;
+    }
+    
+    enc(x, s);
+    channel(x, y, p_rec_given_sent, logfna);
+    /*printf("y = ");
+    for(i = 0; i < n; i++){
+      printf("%d ", y[i]);
+    }
+    printf("\n s = ");
+    for(i = 0; i < m; i++){
+      printf("%d ", s[i]);
+    }
+    printf("\n");*/
+    dec_result = dec(logfna, s, iteration);
+    
+    if(dec_result){
+      errors[0]++;
+    } else {
+      if(HamDist(tmp_x, x, n) != 0) errors[1]++;
+    }
+  }
+
+  printf("errors = %.2f\n", errors[0]);
+  printf("undet_errors = %.2f\n", errors[1]);
+
+  // End Timer
+  diff = clock() - start;
+  int msec = diff * 1000 / CLOCKS_PER_SEC;
+  printf("Time taken %d seconds %d milliseconds", msec/1000, msec%1000);
+
+  return 0;
+}
+/*
+// The gateway function
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
-    double **conf_mat;              /* input scalar */
-    int num_trials;              /* input scalar */
-    int max_iter;              /* input scalar */
+    double **conf_mat;              // input scalar
+    int num_trials;              // input scalar
+    int max_iter;              // input scalar
     
-    /* check for proper number of arguments */
+    // check for proper number of arguments
     if(nrhs!=3) {
         mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nrhs","Three inputs required.");
     }
@@ -536,17 +603,17 @@ void mexFunction( int nlhs, mxArray *plhs[],
         mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nlhs","One output required.");
     }
     
-    /* get the values of the inputs  */
+    // get the values of the inputs
     max_iter = mxGetScalar(prhs[0]);
     num_trials = mxGetScalar(prhs[1]);
     conf_mat = mxGetPr(prhs[2]);
     
-    /* create the output matrix */
+    // create the output matrix
     plhs[0] = mxCreateNumericMatrix(1,2,mxDOUBLE_CLASS,mxREAL);
     
-    /* get a pointer to the real data in the output matrix */
+    // get a pointer to the real data in the output matrix
     double *outMatrix = mxGetPr(plhs[0]);
-
-    /* call the computational routine */
+    printf('hi');
+    // call the computational routine
     test_NB_LDPC_p(max_iter, num_trials, conf_mat, outMatrix);
-}
+}*/
