@@ -4,7 +4,7 @@
 // based on paper of M. C. Davey et al. "Low-Density...over GF(q)" June 1998
 // (c) 2005-2006 by Seishi Takamura @ Stanford University / NTT (Nippon Telegraph and Telephone)
 // Absolutely no warranty.
-//#include <mex.h>
+#include <mex.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -21,8 +21,8 @@
 #define GF_sub(a, b) (a-b)%Q
 
 
-// Inverse in GF(13), inv(a) = inv[a], inv[0] = 0 for consistency
-int inv[13] = {0,1,7,9,10,8,11,2,5,3,4,6,12};
+clock_t pre_CNP, post_CNP;
+clock_t pre_dec, post_dec;
 
 int n, m;
 int rmax, cmax;
@@ -49,7 +49,7 @@ int GF_mul(int a, int b)
 
 // p_rec_given_sent[i][j] = P(i rec | j sent)
 // p_sent_given_rec_T[i][j] = P(j sent | i rec)
-void make_p_sent_given_rec_T(double** p_rec_given_sent){
+void make_p_sent_given_rec_T(double* p_rec_given_sent){
   int i,j;
   float P_x = 1/(1.0*Q);
   float P_y;
@@ -57,10 +57,10 @@ void make_p_sent_given_rec_T(double** p_rec_given_sent){
   for(i = 0; i < Q; i++){
     P_y = 0;
     for(j = 0; j < Q; j++){
-      P_y += (float) p_rec_given_sent[i][j]*P_x;
+      P_y += (float) p_rec_given_sent[i*Q+j]*P_x;
     }
     for(j = 0; j < Q; j++){
-      p_sent_given_rec_T[i][j] = P_x*(float) p_rec_given_sent[i][j]/P_y;
+      p_sent_given_rec_T[i][j] = P_x*(float) p_rec_given_sent[i*Q+j]/P_y;
     }
   }
 }
@@ -71,6 +71,7 @@ void find_all_config(int seq_sz_total, int seq_sz, int rest, int not_row){
   int acc;
   
   if(seq_sz == 1){
+    pre_CNP = clock();
     int seq_iter = 0;
     float p_seq = 1.0;
     
@@ -84,7 +85,7 @@ void find_all_config(int seq_sz_total, int seq_sz, int rest, int not_row){
       }
     }
     *p_symbol += p_seq;
-    //printf("\n");
+    post_CNP += clock() - pre_CNP;
     return;
   }
   for(i = 0; i < Q; i++){
@@ -107,7 +108,8 @@ void CNP(int row_weight, int syndrome){
   }
 }
 
-void channel(int x[], int y[], double** p_rec_given_sent, float **logfna){
+void channel(int x[], int y[], double* p_rec_given_sent, float **logfna){
+  pre_dec = clock();
   int i, rand_select, rec_ind, j;
   float temp;
 
@@ -118,7 +120,7 @@ void channel(int x[], int y[], double** p_rec_given_sent, float **logfna){
     //printf("rand_select = %d\n", rand_select);
     while(temp <= rand_select && rec_ind != 13){
       //printf("temp = %.2f\n", temp);
-      temp += 100*(float) p_rec_given_sent[rec_ind++][x[i]];
+      temp += 100*(float) p_rec_given_sent[(rec_ind++)*Q+x[i]];
     }
     y[i] = --rec_ind;
     logfna[i] = p_sent_given_rec_T[y[i]];
@@ -129,6 +131,7 @@ void channel(int x[], int y[], double** p_rec_given_sent, float **logfna){
     }
     printf("\n");*/
   }
+  post_dec += clock() - pre_dec;
 }
 
 int HamDist(int x[], int y[], int len)
@@ -279,7 +282,7 @@ int dec(float **logfna, int z[], int loop_max)
           printf("\n");
         }*/
       }
-
+      
       CNP(row_weightj, z[j]);
 
       for (k = 0; k < row_weightj; k++) {
@@ -441,25 +444,30 @@ void initdec(char *s)
     }
   }
 }
-/*
-void test_NB_LDPC_p(int iteration, int num_trials, double** p_rec_given_sent, double *errors)
+
+void test_NB_LDPC_p(int iteration, int num_trials, double* p_rec_given_sent, double *errors)
 {
-  printf('hi');
-  int i, j, *s, *x, *y, dec_result;
+  int i, j, k, *s, *x, *y, dec_result;
   float **logfna;
 
-  printf('hi');
   initdec("bazar_GF_13.txt");
-  printf('hi');
   p_sent_given_rec_T = malloc_2D_float(Q, Q);
-  printf('hi');
+
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
   y = malloc(sizeof(int) * n);  // side information
   logfna = malloc_2D_float(n, Q);
-  printf('hi');
+
+  printf("mat = \n");
+  for(i = 0; i < Q; i++){
+    for(j = 0; j < Q; j++){
+      printf("%.2f ", p_rec_given_sent[i*Q+j]);
+    }
+    printf("\n");
+  }
+
   make_p_sent_given_rec_T(p_rec_given_sent);
-  printf('hi');
+  
   errors[0] = 0;
   errors[1] = 0;
 
@@ -470,8 +478,12 @@ void test_NB_LDPC_p(int iteration, int num_trials, double** p_rec_given_sent, do
   for (j = 1; j <= num_trials; j++) {
     srand(j);
     // Generate random data
-    for (i = 0; i < n; i++)
+    printf("x = ");
+    for (i = 0; i < n; i++){
       x[i] = rand() % Q;
+      printf("%d ", x[i]);
+    }
+    printf("\n");
 
     enc(x, s);
     channel(x, y, p_rec_given_sent, logfna);
@@ -487,9 +499,16 @@ void test_NB_LDPC_p(int iteration, int num_trials, double** p_rec_given_sent, do
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
-  printf("Time taken %d seconds %d milliseconds", msec/1000, msec%1000);
+  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+
+  msec = post_CNP * 1000 / CLOCKS_PER_SEC;
+  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+
+  msec = post_dec * 1000 / CLOCKS_PER_SEC;
+  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
 }
-*/
+
+/*
 int main(int argc, char **argv)
 {
   int i, j, *s, *x, *y, dec_result;
@@ -497,32 +516,18 @@ int main(int argc, char **argv)
 
 
   int iteration = 30;
-  int num_trials = 1;
+  int num_trials = 10;
   double errors[2];
-  double** p_rec_given_sent;
-  p_rec_given_sent = malloc_2D_double(Q, Q);
-  memset(p_rec_given_sent[0], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[1], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[2], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[3], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[4], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[5], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[6], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[7], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[8], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[9], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[10], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[11], 0, 13*sizeof(double));
-  memset(p_rec_given_sent[12], 0, 13*sizeof(double));
-  //printf("hi\n");
+  double* p_rec_given_sent;
+  p_rec_given_sent = malloc(Q*Q*sizeof(double));
   for(i = 0; i < Q; i++){
-    p_rec_given_sent[i][i] = 1.00;
+    memset(p_rec_given_sent+i*Q, 0, Q*sizeof(double));
+    p_rec_given_sent[i*Q+i] = 0.98;
   }
-  /*for(i = 1; i < Q; i++){
-    p_rec_given_sent[i][i-1] = 0.02;
+  for(i = 1; i < Q; i++){
+    p_rec_given_sent[i*Q+i-1] = 0.02;
   }
-  p_rec_given_sent[11][12] = 0.02;*/
-
+  p_rec_given_sent[11*Q+12] = 0.02;
 
 
   initdec("bazar_GF_13.txt");
@@ -534,13 +539,7 @@ int main(int argc, char **argv)
   logfna = malloc_2D_float(n, Q);
 
   make_p_sent_given_rec_T(p_rec_given_sent);
-  /*printf("p_sent_given_rec_T = \n");
-  for(i = 0; i < Q; i++){
-    for(j = 0; j < Q; j++){
-      printf("%.2f ", p_sent_given_rec_T[i][j]);
-    }
-    printf("\n");
-  }*/
+
 
   errors[0] = 0;
   errors[1] = 0;
@@ -558,15 +557,7 @@ int main(int argc, char **argv)
     
     enc(x, s);
     channel(x, y, p_rec_given_sent, logfna);
-    /*printf("y = ");
-    for(i = 0; i < n; i++){
-      printf("%d ", y[i]);
-    }
-    printf("\n s = ");
-    for(i = 0; i < m; i++){
-      printf("%d ", s[i]);
-    }
-    printf("\n");*/
+    
     dec_result = dec(logfna, s, iteration);
     
     if(dec_result){
@@ -582,16 +573,19 @@ int main(int argc, char **argv)
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
-  printf("Time taken %d seconds %d milliseconds", msec/1000, msec%1000);
+  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+
+  msec = post_CNP * 1000 / CLOCKS_PER_SEC;
+  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
 
   return 0;
-}
-/*
+}*/
+
 // The gateway function
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
-    double **conf_mat;              // input scalar
+    double *conf_mat;              // input scalar
     int num_trials;              // input scalar
     int max_iter;              // input scalar
     
@@ -613,7 +607,7 @@ void mexFunction( int nlhs, mxArray *plhs[],
     
     // get a pointer to the real data in the output matrix
     double *outMatrix = mxGetPr(plhs[0]);
-    printf('hi');
+    
     // call the computational routine
     test_NB_LDPC_p(max_iter, num_trials, conf_mat, outMatrix);
-}*/
+}
