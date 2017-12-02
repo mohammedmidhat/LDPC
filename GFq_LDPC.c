@@ -9,6 +9,9 @@
 #include <time.h>
 
 #define Q 13
+#define page_size 18336
+#define QLC   4
+#define CW_per_page   4
 // If Q is defined, GF(Q) arithmetic is used.
 // Else, let Log2Q defined and QF(2^Log2Q) arithmetic is used.
 
@@ -111,6 +114,8 @@ int GF_mul(int a, int b)
 
 #endif //Q
 
+int grey_code_inv[16] = {6,5,7,14,9,12,8,13,3,4,2,15,10,11,1,0};
+
 int n, m;
 int rmax, cmax;
 int *row_weight, *col_weight;
@@ -124,6 +129,12 @@ double ***logrho;
 int *tmp_z;
 int *tmp_x;
 double **p_sent_given_rec_T;
+
+
+// Lower page data stored first
+char data_read[QLC*page_size];
+char data_written[QLC*page_size];
+
 
 static unsigned int rndm = 2815UL;
 void SRand(int n) {
@@ -163,35 +174,45 @@ double mse(int x[], int y[], int len)
 
 // p_rec_given_sent[i][j] = P(i rec | j sent)
 // p_sent_given_rec_T[i][j] = P(j sent | i rec)
-void make_p_sent_given_rec_T(double* p_rec_given_sent){
+void make_p_sent_given_rec_T(double* p_rec_given_sent, int num_reads){
   int i,j;
   double P_x = 1/(1.0*Q);
   double P_y;
-  
-  for(i = 0; i < Q; i++){
+
+  for(i = 0; i < Q*num_reads; i++){
     P_y = 0;
     for(j = 0; j < Q; j++){
-      P_y += (double) p_rec_given_sent[i*Q+j]*P_x;
+      P_y += p_rec_given_sent[i*Q+j]*P_x;
     }
-    for(j = 0; j < Q; j++){
-      p_sent_given_rec_T[i][j] = P_x*(double) p_rec_given_sent[i*Q+j]/P_y;
+    if(P_y){
+      for(j = 0; j < Q; j++){
+        p_sent_given_rec_T[i][j] = P_x*p_rec_given_sent[i*Q+j]/P_y;
+      }
+    } else{
+      for(j = 0; j < Q; j++){
+        p_sent_given_rec_T[i][j] = 0;
+      }
     }
   }
 }
 
-void channel(int x[], int y[], double* p_rec_given_sent, double **logfna){
+void channel(int x[], int y[], double* p_rec_given_sent, double **logfna, int num_reads){
   int i, rand_select, rec_ind, j;
   double temp;
-
+  
   for(i = 0; i < n; i++){
     temp = 0;
     rec_ind = 0;
     rand_select = rand()%101;
-    //printf("rand_select = %d\n", rand_select);
-    while(temp <= rand_select && rec_ind != Q){
-      //printf("temp = %.2f\n", temp);
-      temp += 100*(double) p_rec_given_sent[(rec_ind++)*Q+x[i]];
+
+    if(!rand_select){
+      while(!p_rec_given_sent[(rec_ind++)*Q+x[i]]);
     }
+
+    while(temp < rand_select && rec_ind != Q*num_reads){
+      temp += 100*p_rec_given_sent[(rec_ind++)*Q+x[i]];
+    }
+
     y[i] = --rec_ind;
 
     for(j = 0; j < Q; j++){
@@ -510,37 +531,54 @@ void InitSumProductDecoderSyndrome(char *s)
   tmp_x = malloc(sizeof(int) * n);
 }
 
-void GFq_LDPC(int iteration, int num_trials, double* p_rec_given_sent, double *errors)
+void get_symbols_in_byte(int x[], int byte_ind, char lp_byte, char mp_byte, char up_byte, char tp_byte){
+  int symbol, lp_bit, mp_bit, up_bit, tp_bit;
+  for(int i = 0; i < 8; i++){
+    lp_bit = (lp_byte >> (8-1-i)) & 1;
+    mp_bit = (mp_byte >> (8-1-i)) & 1;
+    up_bit = (up_byte >> (8-1-i)) & 1;
+    tp_bit = (tp_byte >> (8-1-i)) & 1;
+
+    x[8*byte_ind+i] = (tp_bit << 3) + (up_bit << 2) + (mp_bit << 1) + (lp_bit);
+  }
+}
+
+// decode_mode: 1:  read data from file
+//              0:  generate random data
+void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, int num_CWs, double* p_rec_given_sent, double *errors)
 {
-  int i, j, k, *s, *x, *y, dec_result;
+  int i, j, k, block_sz_bytes, *s, *x, *y, dec_result;
   double **logfna;
+  long data_ind;
+  char lp_byte, mp_byte, up_byte, tp_byte;
 
   InitSumProductDecoderSyndrome("bazar_GF_13.txt");
-  p_sent_given_rec_T = malloc2Ddouble(Q, Q);
+  block_sz_bytes = n/8;
+  p_sent_given_rec_T = malloc2Ddouble(Q*num_reads, Q);
 
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
   y = malloc(sizeof(int) * n);  // side information
   logfna=malloc2Ddouble(Q, n);
 
-  printf("p_rec_given_sent = \n");
-  for(i = 0; i < Q; i++){
+  /*printf("p_rec_given_sent = \n");
+  for(i = 0; i < Q*num_reads; i++){
     for(j = 0; j < Q; j++){
       printf("%.2f ", p_rec_given_sent[i*Q+j]);
     }
     printf("\n");
-  }
+  }*/
 
-  make_p_sent_given_rec_T(p_rec_given_sent);
+  make_p_sent_given_rec_T(p_rec_given_sent, num_reads);
 
-  printf("p_sent_given_rec_T = \n");
-  for(i = 0; i < Q; i++){
+  /*printf("p_sent_given_rec_T = \n");
+  for(i = 0; i < Q*num_reads; i++){
     for(j = 0; j < Q; j++){
       printf("%.2f ", p_sent_given_rec_T[i][j]);
     }
     printf("\n");
-  }
-  
+  }*/
+
   errors[0] = 0;
   errors[1] = 0;
 
@@ -548,60 +586,80 @@ void GFq_LDPC(int iteration, int num_trials, double* p_rec_given_sent, double *e
   clock_t start = clock(), diff;
 
   // iterate experiments
-  for (j = 1; j <= num_trials; j++) {
-    srand(j);
-    // Generate random data
-    //printf("x = ");
-    for (i = 0; i < n; i++){
-      x[i] = rand() % Q;
-      //printf("%d ", x[i]);
-    }
-    //printf("\n");
+  if(decode_mode){
+    FILE *read_data = fopen("read_data.bin", "rb");
+    FILE *written_data = fopen("written_data.bin", "rb");
 
-    enc(x, s);
-    channel(x, y, p_rec_given_sent, logfna);
-    
-    FILE *fil = fopen("noise.txt", "wt");
-    int ra[4000], na[4000];
-    double **logfnaexp;
-    logfnaexp=malloc2Ddouble(Q, 4000);
-    for (i = 0; i < 4000; i++){
-      ra[i] = rand() % Q;
-      fprintf(fil, "%d ", ra[i]);
-    }
-    fprintf(fil, "\n");
-    n = 4000;
-    channel(ra, na, p_rec_given_sent, logfnaexp);
-    for(i = 0; i < 4000; i++){
-      fprintf(fil, "%d ", na[i]);
-    }
-    fprintf(fil, "\n");
-    fclose(fil);
-    return;
+    for(i = 0; i < num_trials/CW_per_page; i++){
+      fread(data_read, 1, QLC*page_size, read_data);
+      fread(data_written, 1, QLC*page_size, written_data);
 
-    /*printf("y = ");
-    for(i = 0; i < n; i++){
-      printf("%d ", y[i]);
-    }
-    printf("\n");
-    
-    for(i = 0; i < n; i++){
-      for(k = 0; k < Q; k++){
-        printf("%.2f ", logfna[k][i]);
+      for(j = 0; j < CW_per_page; j++){
+        for(k = 0; k < block_sz_bytes; k++){
+          lp_byte = data_written[j*block_sz_bytes+k];
+          mp_byte = data_written[page_size+j*block_sz_bytes+k];
+          up_byte = data_written[2*page_size+j*block_sz_bytes+k];
+          tp_byte = data_written[3*page_size+j*block_sz_bytes+k];
+          get_symbols_in_byte(x, k, lp_byte, mp_byte, up_byte, tp_byte);
+          lp_byte = data_read[j*block_sz_bytes+k];
+          mp_byte = data_read[page_size+j*block_sz_bytes+k];
+          up_byte = data_read[2*page_size+j*block_sz_bytes+k];
+          tp_byte = data_read[3*page_size+j*block_sz_bytes+k];
+          get_symbols_in_byte(y, k, lp_byte, mp_byte, up_byte, tp_byte);
+        }
       }
-      printf("\n");
     }
-    printf("\n");*/
-
-    //lap(x, y, 0.01, logfna);
-    dec_result = dec(logfna, s, iteration);
     
-    if(dec_result){
-      errors[0]++;
-    } else {
-      if(HamDist(tmp_x, x, n) != 0) errors[1]++;
+  } else{
+    for (j = 1; j <= num_trials; j++) {
+      srand(j);
+      // Generate random data
+      //printf("x = ");
+      for (i = 0; i < n; i++){
+        x[i] = rand() % Q;
+      }
+
+      enc(x, s);
+      channel(x, y, p_rec_given_sent, logfna, num_reads);
+    
+      // Debugging the probability computation and the channel function
+      /*
+      FILE *fil = fopen("noise.txt", "wt");
+      int ra[8000], na[8000];
+      double **logfnaexp;
+      logfnaexp=malloc2Ddouble(Q, 8000);
+      for (i = 0; i < 8000; i++){
+        ra[i] = rand() % Q;
+        fprintf(fil, "%d ", ra[i]);
+      }
+      fprintf(fil, "\n");
+      n = 8000;
+      channel(ra, na, p_rec_given_sent, logfnaexp, num_reads);
+      for(i = 0; i < 8000; i++){
+        fprintf(fil, "%d ", na[i]);
+      }
+      fprintf(fil, "\n");
+      for(i = 0; i < 8000; i++){
+        for(k = 0; k < Q; k++){
+          fprintf(fil, "%.2f ", logfnaexp[k][i]);
+        }
+        fprintf(fil, "\n");
+      }
+      fclose(fil);
+      */
+
+
+      //lap(x, y, 0.01, logfna);
+      dec_result = dec(logfna, s, iteration);
+    
+      if(dec_result){
+        errors[0]++;
+      } else {
+        if(HamDist(tmp_x, x, n) != 0) errors[1]++;
+      }
     }
   }
+  
 
   // End Timer
   diff = clock() - start;
@@ -616,9 +674,12 @@ void mexFunction( int nlhs, mxArray *plhs[],
     double *conf_mat;              // input scalar
     int num_trials;              // input scalar
     int max_iter;              // input scalar
+    int num_reads;               // input scalar
+    int decode_mode;          // input scalar
+    int num_CWs;              // input scalar
     
     // check for proper number of arguments
-    if(nrhs!=3) {
+    if(nrhs!=6) {
         mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nrhs","Three inputs required.");
     }
     if(nlhs!=1) {
@@ -628,7 +689,10 @@ void mexFunction( int nlhs, mxArray *plhs[],
     // get the values of the inputs
     max_iter = mxGetScalar(prhs[0]);
     num_trials = mxGetScalar(prhs[1]);
-    conf_mat = mxGetPr(prhs[2]);
+    num_reads = mxGetScalar(prhs[2]);
+    decode_mode = mxGetScalar(prhs[3]);
+    num_CWs = mxGetScalar(prhs[4]);
+    conf_mat = mxGetPr(prhs[5]);
     
     // create the output matrix
     plhs[0] = mxCreateNumericMatrix(1,2,mxDOUBLE_CLASS,mxREAL);
@@ -637,5 +701,5 @@ void mexFunction( int nlhs, mxArray *plhs[],
     double *outMatrix = mxGetPr(plhs[0]);
     
     // call the computational routine
-    GFq_LDPC(max_iter, num_trials, conf_mat, outMatrix);
+    GFq_LDPC(max_iter, num_trials, num_reads, decode_mode, num_CWs, conf_mat, outMatrix);
 }
