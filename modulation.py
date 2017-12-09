@@ -1,4 +1,4 @@
-import numpy as np
+from random import randint
 
 grey_code = [15, 14, 10, 8, 9, 1, 0, 2, 6, 4, 12, 13, 5, 7, 3, 11]
 
@@ -7,8 +7,8 @@ num_bytes_per_page = 18336
 num_pages_per_str = 4
 
 f = open('data.bin','wb')
+g = open('data_sym.txt','w')
 
-rand_data = np.random.randint(2, 15, size=8*num_bytes_per_page*num_strs)
 
 lp_data = [0 for i in range(num_bytes_per_page)]
 mp_data = [0 for i in range(num_bytes_per_page)]
@@ -23,7 +23,8 @@ for k in range(num_strs):
         tp_byte = 0
         
         for j in range(8):
-            symbol = rand_data[k*num_bytes_per_page*8+i*8+j]
+            symbol = randint(0,15)
+            g.write(str(symbol) + " ")
             symbol_code = grey_code[symbol]
             
             lp_bit = symbol_code & 1
@@ -47,6 +48,7 @@ for k in range(num_strs):
     f.write(bytearray(tp_data))
     
 f.close()
+g.close()
 
 ##for i in range(num_strs):
 ##    str_data = file_data[i*num_pages_per_str*num_bytes_per_page:(i+1)*num_pages_per_str*num_bytes_per_page]

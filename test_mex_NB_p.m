@@ -58,12 +58,13 @@ for i = 2:12
     conf_mat(i+1,i) = 0.2;
 end
 
-num_trials = 100;
+num_trials = 64*4;
 max_num_iter = 30;
 num_reads = 1;
+decode_mode = 1;
 
 tic;
-result = GFq_LDPC(max_num_iter,num_trials, num_reads,conf_mat');
+result = GFq_LDPC(max_num_iter,num_trials, num_reads, decode_mode, conf_mat');
 err_count = result(1)/num_trials;
 undet_err = result(2)/num_trials;
 t_post = toc;
