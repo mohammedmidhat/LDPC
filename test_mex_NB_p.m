@@ -50,18 +50,14 @@ conf_mat = [1.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00;
             0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00;
             0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 1.00;
             0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00];
-conf_mat = 0.6*eye(13);
-conf_mat(2,1) = 0.4;
-conf_mat(12,13) = 0.4;
-for i = 2:12
-    conf_mat(i-1,i) = 0.2;
-    conf_mat(i+1,i) = 0.2;
-end
+% conf_mat = 0.9*eye(13);
+% zero_mat = zeros(13*2,13);
+% conf_mat = [conf_mat;zero_mat];
 
-num_trials = 64*4;
+num_trials = 10;
 max_num_iter = 30;
-num_reads = 1;
-decode_mode = 1;
+num_reads = 2;
+decode_mode = 0;
 
 tic;
 result = GFq_LDPC(max_num_iter,num_trials, num_reads, decode_mode, conf_mat');

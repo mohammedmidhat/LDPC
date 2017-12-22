@@ -2,12 +2,12 @@ from random import randint
 
 grey_code = [15, 14, 10, 8, 9, 1, 0, 2, 6, 4, 12, 13, 5, 7, 3, 11]
 
-num_strs = 64*4
+num_strs = 4*64
 num_bytes_per_page = 18336
 num_pages_per_str = 4
 
 f = open('data.bin','wb')
-g = open('data_sym.txt','w')
+g = open('data_sym.bin','wb')
 
 
 lp_data = [0 for i in range(num_bytes_per_page)]
@@ -24,7 +24,7 @@ for k in range(num_strs):
         
         for j in range(8):
             symbol = randint(0,15)
-            g.write(str(symbol) + " ")
+            g.write(bytearray([symbol]))
             symbol_code = grey_code[symbol]
             
             lp_bit = symbol_code & 1

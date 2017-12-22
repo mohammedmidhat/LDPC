@@ -5,24 +5,32 @@
 % Author: Mohammed Al Ai Baky
 % Created: 12/9/2017
 
-function H = parse_MacKay_NB(file, k, n)
-    % Read matrix text file
-    array = dlmread(file);
+function H = alist_to_mat_NB(file)
+    % Open the alist matrix file
+    mat_file = fopen(file);
     
-    % Initializing a sparse matrix according to the matrix text file read
-    H = spalloc(n-k, n, nnz(array)/2);
+    % Create sparse matrix
+    c_r_q = fscanf(mat_file, '%d', [1 3]);
+    c = c_r_q(1);
+    r = c_r_q(2);
+    H = sparse(r,c);
     
-    % Getting the row size
-    [dummy,row_size] = size(array(1,:));
+    % Fetch the the max weights and weight vectors
+    col_weight_max = fscanf(mat_file, '%d', 1);
+    row_weight_max = fscanf(mat_file, '%d', 1);
+    col_weight_arr = fscanf(mat_file, '%d', [1 c]);
+    row_weight_arr = fscanf(mat_file, '%d', [1 r]);
     
-    % Fill in the sparse matrix according to the matrix text file read
-    for vr = 1:n
-        for cn = 1:2:row_size
-            if(array(vr, cn) ~= 0)
-                H(array(vr,cn),vr) = array(vr,cn+1);
-            end
+    for i = 1:c
+        col = fscanf(mat_file, '%d', [1 2*col_weight_arr(i)]);
+        skip_size = 2*(col_weight_max - col_weight_arr(i));
+        skip = fscanf(mat_file, '%d', [1 skip_size]);
+        
+        for j = 0:col_weight_arr(i)-1
+            H(col(2*j+1),i) = col(2*j+2);
         end
     end
     
+    fclose(mat_file);
     return;
 end

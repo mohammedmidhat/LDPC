@@ -321,13 +321,13 @@ void initdec(char *s)
 }
 
 void test_code_B(int iteration, int trials, double p_bsc, double *errors){
-  printf("yes");
   srand(time(NULL));
   int i, j, dec_result, *iterations, *s, *x, *y, *q0;
+  int CW_per_page_fetched;
   
   inittab();
   
-  initdec("204,102_B_Bazar.txt");
+  initdec("1057.244.3.txt");
   q0= malloc(sizeof(int) * n);
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
@@ -341,21 +341,18 @@ void test_code_B(int iteration, int trials, double p_bsc, double *errors){
   clock_t start = clock(), diff;
 
   for (i = 0; i < trials; i++) {
-    for (j = 0; j < n; j++) {
+    /*for (j = 0; j < n; j++) {
       x[j] = rand() & 1;
+    }*/
+    for (j = 0; j < n; j++) {
+      x[j] = 0;
     }
 
     enc(x, s);
-    //printf("\nBinary LDPC experiment %d:\n", i);
     bsc(x, y, p_bsc, q0);
-    //printf("HamDist(x,y)=%3d \n", HamDist(x,y,n));
+    
     dec_result = dec(q0, s, iteration, x);
-    // Original Implementation
-    /*puts(
-      dec(q0, s, iteration, x) ? // sum-product decode (3rd arg: max iteration)
-      "failed." : "converged."
-      );*/
-    //printf("loop = %d\n", loop);
+    
     if(dec_result){
       errors[0]++;
     } else {
@@ -377,9 +374,9 @@ void test_code_B(int iteration, int trials, double p_bsc, double *errors){
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
-    double p_flip;              /* input scalar */
-    int num_trials;              /* input scalar */
-    int max_iter;              /* input scalar */
+    int max_iter;
+    int num_trials;
+    double p_flip;
     
     /* check for proper number of arguments */
     if(nrhs!=3) {
