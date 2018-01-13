@@ -163,13 +163,12 @@ int **LogTanhtin, ***LogTanhtin_row;
 int **Sgntin, ***Sgntin_row;
 int *tmp_bit;
 int *tmp_s;
-int loop;
+
 
 int dec(int q0[], int s[], int loop_max, int x[])
 {
-  int i, j, k;
-  int iir, prev = 999999, nodecr = 0;
-
+  int i, j, k, loop;
+  
   memset(*qin, 0, n * cmax * sizeof(int));
 
   for (loop = 0; loop < loop_max; loop++) {
@@ -225,15 +224,6 @@ int dec(int q0[], int s[], int loop_max, int x[])
     //printf("HamDist(s,synd(x^))=%d\n", i);
     if (i == 0)           // nothing more can be done
       return 0;
-
-    // nonconvergence detection
-    /*if (loop == 0) iir = i;
-    else iir = (int)(iir * 0.85 + i * 0.15 + 0.5);
-
-    if (prev <= i) nodecr++;
-    else nodecr = 0;
-    if (i > iir * 1.1 || nodecr > 10) break; // no conversion
-    prev = i;*/
   }
 
   return 1;
@@ -327,7 +317,7 @@ void test_code_B(int iteration, int trials, double p_bsc, double *errors){
   
   inittab();
   
-  initdec("1057.244.3.txt");
+  initdec("1908.212.4.1383.txt");
   q0= malloc(sizeof(int) * n);
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
@@ -341,13 +331,10 @@ void test_code_B(int iteration, int trials, double p_bsc, double *errors){
   clock_t start = clock(), diff;
 
   for (i = 0; i < trials; i++) {
-    /*for (j = 0; j < n; j++) {
-      x[j] = rand() & 1;
-    }*/
     for (j = 0; j < n; j++) {
-      x[j] = 0;
+      x[j] = rand() & 1;
     }
-
+    
     enc(x, s);
     bsc(x, y, p_bsc, q0);
     

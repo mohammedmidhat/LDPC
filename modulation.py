@@ -6,8 +6,8 @@ num_strs = 4*64
 num_bytes_per_page = 18336
 num_pages_per_str = 4
 
-f = open('data.bin','wb')
-g = open('data_sym.bin','wb')
+f = open('data_13_er.bin','wb')
+g = open('data__13_er_sym.bin','wb')
 
 
 lp_data = [0 for i in range(num_bytes_per_page)]
@@ -23,7 +23,12 @@ for k in range(num_strs):
         tp_byte = 0
         
         for j in range(8):
-            symbol = randint(0,15)
+            symbol = randint(0,12)
+
+            ## Symbol Selection
+            if(symbol == 12):
+                symbol += 2
+            
             g.write(bytearray([symbol]))
             symbol_code = grey_code[symbol]
             

@@ -7,14 +7,11 @@
 #include <errno.h>
 #include <time.h>
 
-
+char hi_c[4];
 void main(int argc, char **argv){
-	int x, y;
-	x = 220;
-	y = 260;
-
-    FILE *fil = fopen("exp.bin", "wb");
-
-    fwrite(&x, 1, 1, fil);
-    fwrite(&y, 1, 1, fil);
+	int i;
+	srand(time(NULL));
+	for(i=0; i<10; i++){
+		printf("%d ", rand()%100);
+	}
 }

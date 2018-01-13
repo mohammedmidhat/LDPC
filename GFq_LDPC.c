@@ -202,10 +202,8 @@ void assign_llr(int y[], double **logfna){
   for(i = 0; i < n; i++){
     for(j = 0; j < Q; j++){
       if(p_sent_given_rec_T[y[i]][j] == 0){
-        //printf("1\n");
         logfna[j][i] = -100;
       } else{
-        //printf("2\n");
         logfna[j][i] = log(p_sent_given_rec_T[y[i]][j]);
       }
     }
@@ -213,13 +211,15 @@ void assign_llr(int y[], double **logfna){
 }
 
 void channel(int x[], int y[], double* p_rec_given_sent, double **logfna, int num_reads){
-  int i, rand_select, rec_ind, j;
+  int i, rec_ind, j;
   double temp;
+  float rand_select;
+  //FILE *lf_file = fopen("logfna.txt", "w");
   
   for(i = 0; i < n; i++){
     temp = 0;
     rec_ind = 0;
-    rand_select = rand()%101;
+    rand_select = ((float)rand())*100/((float)RAND_MAX);
 
     if(!rand_select){
       while(!p_rec_given_sent[(rec_ind++)*Q+x[i]]);
@@ -230,6 +230,9 @@ void channel(int x[], int y[], double* p_rec_given_sent, double **logfna, int nu
     }
 
     y[i] = --rec_ind;
+    /*if(y[i]==0){
+      printf("%.3f %d %.3f\n", temp, rec_ind, rand_select);
+    }*/
 
     for(j = 0; j < Q; j++){
       if(p_sent_given_rec_T[y[i]][j] == 0){
@@ -237,8 +240,11 @@ void channel(int x[], int y[], double* p_rec_given_sent, double **logfna, int nu
       } else{
         logfna[j][i] = log(p_sent_given_rec_T[y[i]][j]);
       }
+      //fprintf(lf_file, "%.3f ", logfna[j][i]);
     }
+    //fprintf(lf_file, "\n");
   }
+  //fclose(lf_file);
 }
 
 // y[n] := x[n] + Laplacian_noise
@@ -531,12 +537,25 @@ void InitSumProductDecoderSyndrome(char *s)
 
 // decode_mode: 1:  read data from file
 //              0:  generate random data
-void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, double* p_rec_given_sent, double *errors)
+void GFq_LDPC(int iteration, int num_trials, int num_strs_seek, int num_reads, int decode_mode, double* p_rec_given_sent, double *errors)
 {
+  srand(time(NULL));
   int i, j, *s, *x, *y, dec_result;
   int CW_per_page_fetched;
   double **logfna;
   char symbol;
+
+  // Normalize p_rec_given_sent
+  double norm;
+  for(i = 0; i < Q; i++){
+    norm = 0;
+    for(j = 0; j < Q*num_reads; j++){
+      norm += p_rec_given_sent[j*Q+i];
+    }
+    for(j = 0; j < Q*num_reads; j++){
+      p_rec_given_sent[j*Q+i] /= norm;
+    }
+  }
 
   InitSumProductDecoderSyndrome("547_NB.txt");
   p_sent_given_rec_T = malloc2Ddouble(Q*num_reads, Q);
@@ -547,6 +566,12 @@ void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, dou
   logfna=malloc2Ddouble(Q, n);
 
   make_p_sent_given_rec_T(p_rec_given_sent, num_reads);
+  /*for(i = 0; i < Q; i++){
+    for(j = 0; j < Q; j++){
+      printf("%.4f ", p_sent_given_rec_T[i][j]);
+    }
+    printf("\n");
+  }*/
 
   errors[0] = 0;
   errors[1] = 0;
@@ -556,8 +581,10 @@ void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, dou
 
   // iterate experiments
   if(decode_mode){
-    FILE *read_data = fopen("written_data_sym.bin", "rb");
-    FILE *written_data = fopen("written_data_sym.bin", "rb");
+    FILE *read_data = fopen("reads.bin", "rb");
+    FILE *written_data = fopen("written_data_sym_13.bin", "rb");
+
+    //fseek(read_data, num_strs_seek*, SEEK_SET);
 
     while(num_trials > 0){
       fread(data_read, 1, 8*page_size, read_data);
@@ -574,7 +601,7 @@ void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, dou
 
         enc(x, s);
         assign_llr(y, logfna);
-        //printf("3\n");
+        
         dec_result = dec(logfna, s, iteration);
         
         if(dec_result){
@@ -592,16 +619,23 @@ void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, dou
     fclose(written_data);
         
   } else{
+    //FILE *debug_file = fopen("debug.txt", "w");
     for (j = 1; j <= num_trials; j++) {
-      srand(j);
       // Generate random data
       for (i = 0; i < n; i++){
         x[i] = rand() % Q;
+        //x[i] = 1;
+        //fprintf(debug_file, "%d ", x[i]);
       }
+      //fprintf(debug_file, "\n");
 
       enc(x, s);
       channel(x, y, p_rec_given_sent, logfna, num_reads);
-
+      /*for(i = 0; i < n; i++){
+        fprintf(debug_file, "%d ", y[i]);
+      }
+      fprintf(debug_file, "\n");
+      fclose(debug_file);*/
 
       dec_result = dec(logfna, s, iteration);
     
@@ -617,22 +651,23 @@ void GFq_LDPC(int iteration, int num_trials, int num_reads, int decode_mode, dou
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
-  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+  //printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
 }
 
 // The gateway function
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
-    double *conf_mat;              // input scalar
-    int num_trials;              // input scalar
-    int max_iter;              // input scalar
-    int num_reads;               // input scalar
-    int decode_mode;          // input scalar
+    double *conf_mat;             // input scalar
+    int num_trials;               // input scalar
+    int num_strs_seek;             // input scalar
+    int max_iter;                 // input scalar
+    int num_reads;                // input scalar
+    int decode_mode;              // input scalar
     
     // check for proper number of arguments
-    if(nrhs!=5) {
-        mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nrhs","Five inputs required.");
+    if(nrhs!=6) {
+        mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nrhs","Six inputs required.");
     }
     if(nlhs!=1) {
         mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nlhs","One output required.");
@@ -641,9 +676,10 @@ void mexFunction( int nlhs, mxArray *plhs[],
     // get the values of the inputs
     max_iter = mxGetScalar(prhs[0]);
     num_trials = mxGetScalar(prhs[1]);
-    num_reads = mxGetScalar(prhs[2]);
-    decode_mode = mxGetScalar(prhs[3]);
-    conf_mat = mxGetPr(prhs[4]);
+    num_strs_seek = mxGetScalar(prhs[2]);
+    num_reads = mxGetScalar(prhs[3]);
+    decode_mode = mxGetScalar(prhs[4]);
+    conf_mat = mxGetPr(prhs[5]);
     
     // create the output matrix
     plhs[0] = mxCreateNumericMatrix(1,2,mxDOUBLE_CLASS,mxREAL);
@@ -652,5 +688,5 @@ void mexFunction( int nlhs, mxArray *plhs[],
     double *outMatrix = mxGetPr(plhs[0]);
     
     // call the computational routine
-    GFq_LDPC(max_iter, num_trials, num_reads, decode_mode, conf_mat, outMatrix);
+    GFq_LDPC(max_iter, num_trials, num_strs_seek, num_reads, decode_mode, conf_mat, outMatrix);
 }

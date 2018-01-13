@@ -194,7 +194,7 @@ int *tmp_bit;
 int *tmp_s;
 int loop;
 
-int dec(int q0[], int s[], int loop_max, int x[])
+int dec(int q0[], int s[], int loop_max)
 {
   int i, j, k;
   int iir, prev = 999999, nodecr = 0;
@@ -254,15 +254,6 @@ int dec(int q0[], int s[], int loop_max, int x[])
     //printf("HamDist(s,synd(x^))=%d\n", i);
     if (i == 0)           // nothing more can be done
       return 0;
-
-    // nonconvergence detection
-    /*if (loop == 0) iir = i;
-    else iir = (int)(iir * 0.85 + i * 0.15 + 0.5);
-
-    if (prev <= i) nodecr++;
-    else nodecr = 0;
-    if (i > iir * 1.1 || nodecr > 10) break; // no conversion
-    prev = i;*/
   }
 
   return 1;
@@ -387,21 +378,40 @@ void get_bits_in_symbol(char symbol, int x[], int symbol_ind){
   x[4*symbol_ind+3] = tp_bit;
 }
 
-// Works only if n is multiple of 4 (a single QLC cell is not shared
-// between 2 CWs)
-void assign_llr(int y[], int q0[]){
-  int i, j, lp_bit, mp_bit, up_bit, tp_bit;
-  char symbol;
-  double Pr_1, llr;
+void channel(int x[], int y[], double* p_rec_given_sent, int q0[], int num_reads){
+  int i, symbol, rand_select, rec_ind;
+  double temp;
 
   for(i = 0; i < n/4; i++){
-    symbol = y[i];
+    symbol = grey_code_inv[(x[4*i+3] << 3) + (x[4*i+2] << 2) + (x[4*i+1] << 1) + (x[4*i])];
 
-  	// On lower page
-  	Pr_1 = 0;
-  	for(j = 0; j < num_sym_per_bit; j++){
-  		Pr_1 += p_sent_given_rec_T[symbol][sym_low_1[j]];
-  	}
+    temp = 0;
+    rec_ind = 0;
+    rand_select = rand()%101;
+
+    if(!rand_select){
+      while(!p_rec_given_sent[(rec_ind++)*Q+x[i]]);
+    }
+
+    while(temp < rand_select && rec_ind != Q*num_reads-2){
+      temp += 100*p_rec_given_sent[(rec_ind++)*Q+x[i]];
+    }
+
+    symbol = --rec_ind;
+
+    assign_llr_one_sym(symbol, i, q0);
+  }
+}
+
+void assign_llr_one_sym(int sym, int sym_ind, int q0[]){
+  double Pr_1, llr;
+  int j;
+
+  // On lower page
+    Pr_1 = 0;
+    for(j = 0; j < num_sym_per_bit; j++){
+      Pr_1 += p_sent_given_rec_T[sym][sym_low_1[j]];
+    }
     if(Pr_1 == 1){
       llr = -100;
     } else if(Pr_1 == 0){
@@ -409,51 +419,63 @@ void assign_llr(int y[], int q0[]){
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-  	q0[4*i] = float2fix(llr);
+    q0[4*sym_ind] = float2fix(llr);
     // On middle page
-  	Pr_1 = 0;
-  	for(j = 0; j < num_sym_per_bit; j++){
-  		Pr_1 += p_sent_given_rec_T[symbol][sym_mid_1[j]];
-  	}
-  	if(Pr_1 == 1){
+    Pr_1 = 0;
+    for(j = 0; j < num_sym_per_bit; j++){
+      Pr_1 += p_sent_given_rec_T[sym][sym_mid_1[j]];
+    }
+    if(Pr_1 == 1){
       llr = -100;
     } else if(Pr_1 == 0){
       llr = 100;
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-  	q0[4*i+1] = float2fix(llr);
+    q0[4*sym_ind+1] = float2fix(llr);
     // On upper page
-  	Pr_1 = 0;
-  	for(j = 0; j < num_sym_per_bit; j++){
-  		Pr_1 += p_sent_given_rec_T[symbol][sym_up_1[j]];
-  	}
-  	if(Pr_1 == 1){
+    Pr_1 = 0;
+    for(j = 0; j < num_sym_per_bit; j++){
+      Pr_1 += p_sent_given_rec_T[sym][sym_up_1[j]];
+    }
+    if(Pr_1 == 1){
       llr = -100;
     } else if(Pr_1 == 0){
       llr = 100;
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-  	q0[4*i+2] = float2fix(llr);
+    q0[4*sym_ind+2] = float2fix(llr);
     // On top page
-  	Pr_1 = 0;
-  	for(j = 0; j < num_sym_per_bit; j++){
-  		Pr_1 += p_sent_given_rec_T[symbol][sym_top_1[j]];
-  	}
-  	if(Pr_1 == 1){
+    Pr_1 = 0;
+    for(j = 0; j < num_sym_per_bit; j++){
+      Pr_1 += p_sent_given_rec_T[sym][sym_top_1[j]];
+    }
+    if(Pr_1 == 1){
       llr = -100;
     } else if(Pr_1 == 0){
       llr = 100;
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-  	q0[4*i+3] = float2fix(llr);
+    q0[4*sym_ind+3] = float2fix(llr);
+}
+
+// Works only if n is multiple of 4 (a single QLC cell is not shared
+// between 2 CWs)
+void assign_llr(int y[], int q0[]){
+  int i, j;
+  char symbol;
+  double Pr_1, llr;
+
+  for(i = 0; i < n/4; i++){
+    symbol = y[i];
+
+    assign_llr_one_sym(symbol, i, q0);
   }
 }
 
 void test_code_B_MSDP(int iteration, int num_trials, int num_reads, int decode_mode, double* p_rec_given_sent, double *errors){
-  srand(time(NULL));
   int i, j, dec_result, *iterations, *s, *x, *y, *q0;
   int CW_per_page_fetched;
   char symbol;
@@ -475,41 +497,61 @@ void test_code_B_MSDP(int iteration, int num_trials, int num_reads, int decode_m
   // Start Timer
   clock_t start = clock(), diff;
 
-  FILE *read_data = fopen("snowbird_sym.bin", "rb");
-  FILE *written_data = fopen("snowbird_sym.bin", "rb");
+  if(decode_mode){
+    FILE *read_data = fopen("snowbird_sym.bin", "rb");
+    FILE *written_data = fopen("snowbird_sym.bin", "rb");
 
-  while(num_trials){
-  	fread(data_read, 1, 8*page_size, read_data);
-    fread(data_written, 1, 8*page_size, written_data);
-    CW_per_page_fetched = 0;
+    while(num_trials){
+      fread(data_read, 1, 8*page_size, read_data);
+      fread(data_written, 1, 8*page_size, written_data);
+      CW_per_page_fetched = 0;
 
-    while(CW_per_page_fetched != CW_per_page){
-    	for(i = 0; i < n/4; i++){
-          symbol = data_written[CW_per_page_fetched*n/4+i];
-          get_bits_in_symbol(symbol, x, i);
-          symbol = data_read[CW_per_page_fetched*n/4+i];
-          y[i] = symbol;
+      while(CW_per_page_fetched != CW_per_page){
+        for(i = 0; i < n/4; i++){
+            symbol = data_written[CW_per_page_fetched*n/4+i];
+            get_bits_in_symbol(symbol, x, i);
+            symbol = data_read[CW_per_page_fetched*n/4+i];
+            y[i] = symbol;
+        }
+
+        enc(x, s);
+        assign_llr(y, q0);
+    
+        dec_result = dec(q0, s, iteration);
+    
+        if(dec_result){
+            errors[0]++;
+        } else {
+            if(HamDist(tmp_bit, x, n) != 0) errors[1]++;
+        }
+        CW_per_page_fetched++;
+        num_trials--;
+      }
+    }
+
+    fclose(read_data);
+    fclose(written_data);
+  } else{
+    for (j = 1; j <= num_trials; j++){
+      srand(j);
+      // Generate random data
+      for (i = 0; i < n; i++){
+        x[i] = rand() % 2;
       }
 
-    	enc(x, s);
-    	assign_llr(y, q0);
-    
-    	dec_result = dec(q0, s, iteration, x);
-    
-    	if(dec_result){
-      		errors[0]++;
-    	} else {
-      		if(HamDist(tmp_bit, x, n) != 0) errors[1]++;
-    	}
-      CW_per_page_fetched++;
-      num_trials--;
+      enc(x, s);
+      channel(x, y, p_rec_given_sent, q0, num_reads);
+
+      dec_result = dec(q0, s, iteration);
+
+      if(dec_result){
+          errors[0]++;
+      } else {
+          if(HamDist(tmp_bit, x, n) != 0) errors[1]++;
+      }
     }
   }
-
-  fclose(read_data);
-  fclose(written_data);
-
-
+  
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
