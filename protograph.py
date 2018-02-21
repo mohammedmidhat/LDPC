@@ -1,3 +1,9 @@
+##LDPC protograph lifting related code
+
+##Author: Mohammed Al Ai Baky
+##Created: 7/13/2017
+
+
 import numpy as np
 from scipy import sparse
 

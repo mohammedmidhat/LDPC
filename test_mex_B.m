@@ -1,7 +1,14 @@
+% This script invokes binary LDPC decoding simulations 
+% The decoding is invoked through the test_code_B() mex call.
+
+% Author: Mohammed Al Ai Baky
+% Created: 1/20/2018
+
+
 bit_err_prob = [0.025:-0.005:0.001];
 err_count = zeros(1,size(bit_err_prob,2));
 undet_err = zeros(1,size(bit_err_prob,2));
-num_trials = 1000;
+num_trials = 200;
 max_num_iter = 30;
 
 tic;

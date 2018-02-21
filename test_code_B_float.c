@@ -1,3 +1,7 @@
+// Binary LDPC decoder, called in from a MATLAB script
+// Similar to test_code_B.c but with floating point precision message-passing
+
+
 #include "mex.h"
 #include <math.h>
 #include <stdlib.h>
@@ -11,7 +15,6 @@ int rmax, cmax;
 int *row_weight, *col_weight;
 int **row_col;
 
-//int err_count, undet_err_count;
 
 double atanh2(double x)
 {
@@ -21,7 +24,6 @@ double logtanh2(double x)
 {
   return log(tanh(fabs(x*0.5)));  // returns log tanh |x|
 }
-
 
 int HamDist(int *x, int *y, int len)
 {
@@ -215,7 +217,7 @@ void initdec(char *s)
 
   {//skip n lines
     for (i = 0; i < n; i++) {
-      for (j = 0; j < col_weight[i]; j++)
+      for (j = 0; j < cmax; j++)
         fscanf(fp, "%*d");
     }
   }
@@ -235,14 +237,12 @@ void initdec(char *s)
   row_N   = malloc2Dint(m, rmax);
   col_row = malloc2Dint(n, cmax);
   col_N   = malloc2Dint(n, cmax);
+  
   for (j = 0; j < m; j++) {
     for (i = 0; i < row_weight[j]; i++) {
       int v;
       fscanf(fp, "%d", &v);
       v--;
-      //if(j == 0){
-      //  printf("%d\n", v);
-      //}
       row_col[j][i] = v;	// col address
       row_N[j][i] = count[v];	// vertical count of non-zero coef
       col_row[v][count[v]] = j;	// row address
@@ -251,9 +251,9 @@ void initdec(char *s)
       qin_row[j][i] = &qin[row_col[j][i]][row_N[j][i]];
     }
     // following block added on 02/05/2008 according to Mr. David Elkouss' comment
-    /*for ( ; i < rmax; i++) {
+    for ( ; i < rmax; i++) {
       fscanf(fp, "%*d"); // skip the 0s (fillers)
-    }*/
+    }
   }
   fclose(fp);
 
@@ -273,14 +273,13 @@ void initdec(char *s)
   free( col_N);
 }
 
-void test_code_B_float(int iteration, int trials, double p_bsc, double *errors){
+void test_code_B_float_cw_noise_gen(char *code_filename, int iteration, int trials, double p_bsc, double *errors){
   srand(time(NULL));
-  int i, j, dec_result, *iterations, *s, *x, *y;
-  int CW_per_page_fetched;
+  int i, j, dec_result;
+  int *s, *x, *y;
   double *q0;
-
   
-  initdec("1908.212.4.1383.txt");
+  initdec(code_filename);
   q0= malloc(sizeof(double) * n);
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
@@ -313,10 +312,33 @@ void test_code_B_float(int iteration, int trials, double p_bsc, double *errors){
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
-  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+  //printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+}
 
-  /*printf("Undetected Errors = %f\n", errors[1]);
-  printf("Errors = %f\n", errors[0]);*/
+void test_code_B_float(char *code_filename, int iteration, int *x, int *s, int *y, double *q0, double *errors){
+  srand(time(NULL));
+  int i, dec_result;
+  
+  initdec(code_filename);
+  
+  errors[0] = 0;
+  errors[1] = 0;
+
+  // Start Timer
+  clock_t start = clock(), diff;
+    
+  dec_result = dec(q0, s, iteration, x);
+
+  if(dec_result){
+    errors[0]++;
+  } else {
+    if(HamDist(tmp_bit, x, n) != 0) errors[1]++;
+  }
+
+  // End Timer
+  diff = clock() - start;
+  int msec = diff * 1000 / CLOCKS_PER_SEC;
+  //printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
 }
 
 
@@ -324,23 +346,63 @@ void test_code_B_float(int iteration, int trials, double p_bsc, double *errors){
 void mexFunction( int nlhs, mxArray *plhs[],
                   int nrhs, const mxArray *prhs[])
 {
+    int i;
+
+    char *code_filename;
     int max_iter;
     int num_trials;
     double p_flip;
+    int cw_noise_gen;
+
+    int nvar;
+    int nchk;
+    double *x_in;
+    double *s_in;
+    double *y_in;
+    double *q0;
+
+    int *x;
+    int *s;
+    int *y;
     
     /* check for proper number of arguments */
-    if(nrhs!=3) {
-        mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nrhs","Three inputs required.");
+    /* get the values of the inputs  */
+    if(nrhs==4) {
+        code_filename = mxArrayToString(prhs[0]);
+        max_iter = mxGetScalar(prhs[1]);
+        num_trials = mxGetScalar(prhs[2]);
+        p_flip = mxGetScalar(prhs[3]);
+        cw_noise_gen = 1;
+    } else if(nrhs==8) {
+        code_filename = mxArrayToString(prhs[0]);
+        max_iter = mxGetScalar(prhs[1]);
+        cw_noise_gen = 0;
+
+        nvar = mxGetScalar(prhs[2]);
+        nchk = mxGetScalar(prhs[3]);
+        x_in = mxGetPr(prhs[4]);
+        s_in = mxGetPr(prhs[5]);
+        y_in = mxGetPr(prhs[6]);
+        q0 = mxGetPr(prhs[7]);
+
+        x = malloc(nvar*sizeof(int));
+        s = malloc(nchk*sizeof(int));
+        y = malloc(nvar*sizeof(int));
+
+        for(i = 0; i < nvar; i++){
+          x[i] = (int) x_in[i];
+          y[i] = (int) y_in[i];
+        }
+        for(i = 0; i < nchk; i++){
+          s[i] = (int) s_in[i];
+        }
+    } else{
+        mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nrhs","Number of inputs is wrong.");
     }
     if(nlhs!=1) {
         mexErrMsgIdAndTxt("MyToolbox:arrayProduct:nlhs","Two output required.");
     }
-    
-    /* get the values of the inputs  */
-    max_iter = mxGetScalar(prhs[0]);
-    num_trials = mxGetScalar(prhs[1]);
-    p_flip = mxGetScalar(prhs[2]);
-    
+        
     /* create the output matrix */
     plhs[0] = mxCreateNumericMatrix(1,2,mxDOUBLE_CLASS,mxREAL);
     
@@ -348,5 +410,9 @@ void mexFunction( int nlhs, mxArray *plhs[],
     double *outMatrix = mxGetPr(plhs[0]);
 
     /* call the computational routine */
-    test_code_B_float(max_iter, num_trials, p_flip, outMatrix);
+    if(cw_noise_gen){
+      test_code_B_float_cw_noise_gen(code_filename, max_iter, num_trials, p_flip, outMatrix);
+    } else{
+      test_code_B_float(code_filename, max_iter, x, s, y, q0, outMatrix);
+    }
 }

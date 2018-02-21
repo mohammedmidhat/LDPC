@@ -1,3 +1,6 @@
+// Binary LDPC decoder, called in from a MATLAB script
+
+
 #include "mex.h"
 #include <math.h>
 #include <stdlib.h>
@@ -272,14 +275,13 @@ void initdec(char *s)
   row_N   = malloc2Dint(m, rmax);
   col_row = malloc2Dint(n, cmax);
   col_N   = malloc2Dint(n, cmax);
+  //printf("1\n");
   for (j = 0; j < m; j++) {
     for (i = 0; i < row_weight[j]; i++) {
       int v;
       fscanf(fp, "%d", &v);
       v--;
-      //if(j == 0){
-      //  printf("%d\n", v);
-      //}
+      
       row_col[j][i] = v;	// col address
       row_N[j][i] = count[v];	// vertical count of non-zero coef
       col_row[v][count[v]] = j;	// row address
@@ -288,9 +290,10 @@ void initdec(char *s)
       qin_row[j][i] = &qin[row_col[j][i]][row_N[j][i]];
     }
     // following block added on 02/05/2008 according to Mr. David Elkouss' comment
-    /*for ( ; i < rmax; i++) {
+    for ( ; i < rmax; i++) {
+      //printf("2\n");
       fscanf(fp, "%*d"); // skip the 0s (fillers)
-    }*/
+    }
   }
   fclose(fp);
 
@@ -317,7 +320,7 @@ void test_code_B(int iteration, int trials, double p_bsc, double *errors){
   
   inittab();
   
-  initdec("1908.212.4.1383.txt");
+  initdec("peg_16000_3_0.9.txt");
   q0= malloc(sizeof(int) * n);
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source

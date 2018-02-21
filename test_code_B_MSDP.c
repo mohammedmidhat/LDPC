@@ -1,3 +1,9 @@
+// Binary LDPC decoder, called in from a MATLAB script
+// Takes a confusion matrix to generate noise
+// It can also take raw read and raw program files, but that part is not tested
+// Some parameters are hard-coded in the file, you need to change them for different experiments
+
+
 #include "mex.h"
 #include <math.h>
 #include <stdlib.h>
@@ -39,70 +45,6 @@ double logtanh2(double x)
   return log(tanh(fabs(x*0.5)));  // returns log tanh |x|
 }
 
-#define INT	8/*8*/              // int part
-#define DECI	14/*13*/              // fraction part
-#define FMUL	(1<<DECI)       // multiplier
-#define PREC	(1.0/FMUL)      // precision
-#define LEVELS	(1<<(INT+DECI))
-static int flogtanh[LEVELS];
-static int fgallag[LEVELS];
-
-int float2fix(double x)
-{
-  if (x >= 0) {
-    return (int)(x * FMUL + 0.5);
-  } else {
-    return -(int)((-x) * FMUL + 0.5);
-  }
-}
-
-unsigned int float2fixu(double x)
-{
-  return (unsigned int)(x * FMUL + 0.5);
-}
-
-#define fix2float(x) ((x)*PREC)
-
-void inittab(void)
-{
-  int i = 1;
-  double right = logtanh2(fix2float(i) - 0.5*PREC);
-  flogtanh[0] = -FMUL*14;
-  for ( ; i < LEVELS; i++) {
-    double d = fix2float(i);
-    double left = logtanh2(d+0.5*PREC);
-    flogtanh[i] = float2fix((4*logtanh2(d)+right+left) / 6.0);
-    right = left;
-  }
-
-  i = 1;
-  fgallag[0] = FMUL*14;
-  right = atanh2(exp(fix2float(-i) - 0.5*PREC));
-  for ( ; i < LEVELS; i++) {
-    double d = fix2float(-i);
-    double expd = atanh2(exp(d));
-    double left = atanh2(exp(d+0.5*PREC));
-    fgallag[i] = float2fix((4*expd+right+left) / 6.0);
-    right = left;
-  }
-}
-
-int Flogtanh(int x)
-{
-  assert(x>=0);//if (x < 0) return 0;
-  if (x >= LEVELS)
-    return 0;
-  return flogtanh[x];
-}
-
-int Fgallag(int x)
-{
-  assert(x <= 0);//  if (x >= 0) return -FMUL*14; //-115000
-  if (x <= -LEVELS)
-    return 0;
-  return fgallag[-x];
-}
-
 int HamDist(int *x, int *y, int len)
 {
   int i, sum = 0;
@@ -112,7 +54,7 @@ int HamDist(int *x, int *y, int len)
   return sum;
 }
 
-int bsc(int x[], int y[], double p, int q0[])
+int bsc(int x[], int y[], double p, double q0[])
 {
   int i, num = 0, modified = 0;
   int *err = malloc(sizeof(int) * n);
@@ -135,7 +77,7 @@ int bsc(int x[], int y[], double p, int q0[])
 
   for (i = 0; i < n; i++) {
     double d = (1 - 2 * y[i]) * log((1.0 - p) / p);
-    q0[i] = float2fix(d);
+    q0[i] = d;
   }
   return modified;
 }
@@ -187,32 +129,43 @@ double **malloc2Ddouble(int a, int b) // allocates array[a][b]
   return pp;
 }
 
-int **qin, ***qin_row;
-int **LogTanhtin, ***LogTanhtin_row;
+double ***malloc2Ddoublep(int a, int b) // allocates array[a][b]
+{
+  int i;
+  double ***pp = malloc(sizeof(double **) * a);
+  double **p = malloc(sizeof(double*) * a * b);
+  if (pp == NULL || p == NULL) exit(-1);
+  for (i = 0; i < a; i++) {
+    pp[i] = p + b*i;
+  }
+  return pp;
+}
+
+
+double **qin, ***qin_row;
+double **LogTanhtin, ***LogTanhtin_row;
 int **Sgntin, ***Sgntin_row;
 int *tmp_bit;
 int *tmp_s;
-int loop;
 
-int dec(int q0[], int s[], int loop_max)
+int dec(double q0[], int s[], int loop_max)
 {
-  int i, j, k;
-  int iir, prev = 999999, nodecr = 0;
+  int i, j, k, loop;
 
-  memset(*qin, 0, n * cmax * sizeof(int));
+  memset(*qin, 0, n * cmax * sizeof(double));
 
   for (loop = 0; loop < loop_max; loop++) {
     for (i = 0; i < n; i++) {
-      int sum = q0[i];
+      double sum = q0[i];
       for (j = 0; j < col_weight[i]; j++)
         sum += qin[i][j];
       for (j = 0; j < col_weight[i]; j++) {
-        int qout = sum - qin[i][j];
+        double qout = sum - qin[i][j];
         if (qout < 0) {
-          *LogTanhtin_row[i][j] = Flogtanh(-qout);
+          *LogTanhtin_row[i][j] = logtanh2(-qout);
           *Sgntin_row[i][j] = 1;
         } else {
-          *LogTanhtin_row[i][j] = Flogtanh(qout);
+          *LogTanhtin_row[i][j] = logtanh2(qout);
           *Sgntin_row[i][j] = 0;
         }
         //printf("v_msg_%d_%d = %d",i,j,qout);
@@ -221,14 +174,14 @@ int dec(int q0[], int s[], int loop_max)
 
     for (j = 0; j < m; j++) {
       int sgnprod = s[j];
-      int logprod = 0;
+      double logprod = 0;
       for (k = 0; k < row_weight[j]; k++) {
         logprod += LogTanhtin[j][k];
         sgnprod ^= Sgntin[j][k];
       }
 
       for (k = 0; k < row_weight[j]; k++) {
-        int tout = Fgallag(logprod - LogTanhtin[j][k]);
+        double tout = atanh2(exp(logprod - LogTanhtin[j][k]));
         if(sgnprod != Sgntin[j][k]){
           *qin_row[j][k] = -tout;
           //printf("c_msg_%d_%d = %d",j,k,-tout);
@@ -240,7 +193,7 @@ int dec(int q0[], int s[], int loop_max)
     }
 
     for (i = 0; i < n; i++) {
-      int sum = q0[i];
+      double sum = q0[i];
       for (j = 0; j < col_weight[i]; j++) {
         sum += qin[i][j];
       }
@@ -255,7 +208,6 @@ int dec(int q0[], int s[], int loop_max)
     if (i == 0)           // nothing more can be done
       return 0;
   }
-
   return 1;
 }
 
@@ -289,10 +241,10 @@ void initdec(char *s)
   
   count = malloc(sizeof(int) * n);
   memset(count, 0, sizeof(int) * n);
-  qin = malloc2Dint(n, cmax);
-  qin_row = malloc2Dintp(m, rmax);
-  LogTanhtin     = malloc2Dint(m, rmax);
-  LogTanhtin_row = malloc2Dintp(n, cmax);
+  qin = malloc2Ddouble(n, cmax);
+  qin_row = malloc2Ddoublep(m, rmax);
+  LogTanhtin     = malloc2Ddouble(m, rmax);
+  LogTanhtin_row = malloc2Ddoublep(n, cmax);
   Sgntin     = malloc2Dint(m, rmax);
   Sgntin_row = malloc2Dintp(n, cmax);
   tmp_bit = malloc(sizeof(int) * n);
@@ -318,9 +270,9 @@ void initdec(char *s)
       qin_row[j][i] = &qin[row_col[j][i]][row_N[j][i]];
     }
     // following block added on 02/05/2008 according to Mr. David Elkouss' comment
-    /*for ( ; i < rmax; i++) {
+    for ( ; i < rmax; i++) {
       fscanf(fp, "%*d"); // skip the 0s (fillers)
-    }*/
+    }
   }
   fclose(fp);
 
@@ -343,11 +295,17 @@ void initdec(char *s)
 // p_rec_given_sent[i][j] = P(i rec | j sent)
 // p_sent_given_rec_T[i][j] = P(j sent | i rec)
 void make_p_sent_given_rec_T(double* p_rec_given_sent, int num_reads){
-  int i,j;
+  int i, j, row_dim;
   double P_x = 1/(1.0*Q);
   double P_y;
 
-  for(i = 0; i < Q*num_reads; i++){
+  if(num_reads == 1){
+    row_dim = Q;
+  } else if(num_reads == 3){
+    row_dim = Q*num_reads-2;
+  }
+
+  for(i = 0; i < row_dim; i++){
     P_y = 0;
     for(j = 0; j < Q; j++){
       P_y += p_rec_given_sent[i*Q+j]*P_x;
@@ -378,32 +336,7 @@ void get_bits_in_symbol(char symbol, int x[], int symbol_ind){
   x[4*symbol_ind+3] = tp_bit;
 }
 
-void channel(int x[], int y[], double* p_rec_given_sent, int q0[], int num_reads){
-  int i, symbol, rand_select, rec_ind;
-  double temp;
-
-  for(i = 0; i < n/4; i++){
-    symbol = grey_code_inv[(x[4*i+3] << 3) + (x[4*i+2] << 2) + (x[4*i+1] << 1) + (x[4*i])];
-
-    temp = 0;
-    rec_ind = 0;
-    rand_select = rand()%101;
-
-    if(!rand_select){
-      while(!p_rec_given_sent[(rec_ind++)*Q+x[i]]);
-    }
-
-    while(temp < rand_select && rec_ind != Q*num_reads-2){
-      temp += 100*p_rec_given_sent[(rec_ind++)*Q+x[i]];
-    }
-
-    symbol = --rec_ind;
-
-    assign_llr_one_sym(symbol, i, q0);
-  }
-}
-
-void assign_llr_one_sym(int sym, int sym_ind, int q0[]){
+void assign_llr_one_sym(int sym, int sym_ind, double q0[]){
   double Pr_1, llr;
   int j;
 
@@ -419,7 +352,7 @@ void assign_llr_one_sym(int sym, int sym_ind, int q0[]){
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-    q0[4*sym_ind] = float2fix(llr);
+    q0[4*sym_ind] = llr;
     // On middle page
     Pr_1 = 0;
     for(j = 0; j < num_sym_per_bit; j++){
@@ -432,7 +365,7 @@ void assign_llr_one_sym(int sym, int sym_ind, int q0[]){
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-    q0[4*sym_ind+1] = float2fix(llr);
+    q0[4*sym_ind+1] = llr;
     // On upper page
     Pr_1 = 0;
     for(j = 0; j < num_sym_per_bit; j++){
@@ -445,7 +378,7 @@ void assign_llr_one_sym(int sym, int sym_ind, int q0[]){
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-    q0[4*sym_ind+2] = float2fix(llr);
+    q0[4*sym_ind+2] = llr;
     // On top page
     Pr_1 = 0;
     for(j = 0; j < num_sym_per_bit; j++){
@@ -458,12 +391,12 @@ void assign_llr_one_sym(int sym, int sym_ind, int q0[]){
     } else{
       llr = log((1.0 - Pr_1) / Pr_1);
     }
-    q0[4*sym_ind+3] = float2fix(llr);
+    q0[4*sym_ind+3] = llr;
 }
 
 // Works only if n is multiple of 4 (a single QLC cell is not shared
 // between 2 CWs)
-void assign_llr(int y[], int q0[]){
+void assign_llr(int y[], double q0[]){
   int i, j;
   char symbol;
   double Pr_1, llr;
@@ -475,16 +408,65 @@ void assign_llr(int y[], int q0[]){
   }
 }
 
+void channel(int x[], double* p_rec_given_sent, double q0[], int num_reads){
+  int i, symbol, rand_select, rec_ind, row_dim;
+  double temp;
+
+  if(num_reads == 1){
+    row_dim = Q;
+  } else if(num_reads == 3){
+    row_dim = Q*num_reads-2;
+  }
+
+  for(i = 0; i < n/4; i++){
+    symbol = grey_code_inv[(x[4*i+3] << 3) + (x[4*i+2] << 2) + (x[4*i+1] << 1) + (x[4*i])];
+    
+    temp = 0;
+    rec_ind = 0;
+    rand_select = rand()%101;
+    
+    if(!rand_select){
+      while(!p_rec_given_sent[(rec_ind++)*Q+symbol]);
+    }
+
+    while(temp < rand_select && rec_ind != row_dim){
+      temp += 100*p_rec_given_sent[(rec_ind++)*Q+symbol];
+    }
+    
+    symbol = --rec_ind;
+    
+    assign_llr_one_sym(symbol, i, q0);
+  }
+}
+
 void test_code_B_MSDP(int iteration, int num_trials, int num_reads, int decode_mode, double* p_rec_given_sent, double *errors){
-  int i, j, dec_result, *iterations, *s, *x, *y, *q0;
+  srand(time(NULL));
+  int i, j, k, dec_result, *iterations, *s, *x, *y, row_dim;
   int CW_per_page_fetched;
   char symbol;
+  double *q0;
+
+  if(num_reads == 1){
+    row_dim = Q;
+  } else if(num_reads == 3){
+    row_dim = Q*num_reads-2;
+  }
+
+  // Normalize p_rec_given_sent
+  double norm;
+  for(i = 0; i < Q; i++){
+    norm = 0;
+    for(j = 0; j < row_dim; j++){
+      norm += p_rec_given_sent[j*Q+i];
+    }
+    for(j = 0; j < row_dim; j++){
+      p_rec_given_sent[j*Q+i] /= norm;
+    }
+  }
   
-  inittab();
-  
-  initdec("16383.2130.3.txt");
-  p_sent_given_rec_T = malloc2Ddouble(Q*num_reads, Q);
-  q0= malloc(sizeof(int) * n);
+  initdec("peg_16000_3_0.9.txt");
+  p_sent_given_rec_T = malloc2Ddouble(row_dim, Q);
+  q0= malloc(sizeof(double) * n);
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source
   y = malloc(sizeof(int) * n);  // side information
@@ -533,14 +515,13 @@ void test_code_B_MSDP(int iteration, int num_trials, int num_reads, int decode_m
     fclose(written_data);
   } else{
     for (j = 1; j <= num_trials; j++){
-      srand(j);
       // Generate random data
       for (i = 0; i < n; i++){
         x[i] = rand() % 2;
       }
 
       enc(x, s);
-      channel(x, y, p_rec_given_sent, q0, num_reads);
+      channel(x, p_rec_given_sent, q0, num_reads);      
 
       dec_result = dec(q0, s, iteration);
 
@@ -555,7 +536,7 @@ void test_code_B_MSDP(int iteration, int num_trials, int num_reads, int decode_m
   // End Timer
   diff = clock() - start;
   int msec = diff * 1000 / CLOCKS_PER_SEC;
-  printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
+  //printf("Time taken %d seconds %d milliseconds\n", msec/1000, msec%1000);
 
   /*printf("Undetected Errors = %f\n", errors[1]);
   printf("Errors = %f\n", errors[0]);*/

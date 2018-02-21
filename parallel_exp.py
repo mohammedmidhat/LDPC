@@ -1,3 +1,9 @@
+##LDPC Decoder, not sure if this code is complete
+
+##Author: Mohammed Al Ai Baky
+##Created: 9/24/2017
+
+
 from multiprocessing import Pool
 import math
 import numpy as np

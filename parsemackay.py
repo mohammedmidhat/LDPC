@@ -1,3 +1,9 @@
+##Parses H-matries in the alist format, not sure if this code is complete
+
+##Author: Mohammed Al Ai Baky
+##Created: 7/13/2017
+
+
 import array
 import numpy as np
 

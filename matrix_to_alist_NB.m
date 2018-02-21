@@ -3,7 +3,7 @@
 % The alist format is as in Prof. MacKay's ldpc code library
 
 % Author: Mohammed Al Ai Baky
-% Created: 9/24/2017
+% Created: 12/8/2017
 
 
 function matrix_to_alist_NB(H, file_name, q)

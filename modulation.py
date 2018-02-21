@@ -1,3 +1,12 @@
+##Generates constrained data (by symbols) for QLC flash
+##Generrates two binary files:
+##1- the symbols file
+##2- The QLC grey coding of the symbols
+##
+##Author: Mohammed Al Ai Baky
+##Created: 1/11/2018
+
+
 from random import randint
 
 grey_code = [15, 14, 10, 8, 9, 1, 0, 2, 6, 4, 12, 13, 5, 7, 3, 11]

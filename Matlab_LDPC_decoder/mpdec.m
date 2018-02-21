@@ -6,7 +6,7 @@
 % Modified : 9/28/2017
 
 
-function [cHat, nIteration, success] = mpdec(H, rxLLR, nIterationMax)
+function [cHat, nIteration, success] = mpdec(H, rxLLR, nIterationMax, syndrome)
     
     success = 0;
     % Code structure
@@ -34,14 +34,14 @@ function [cHat, nIteration, success] = mpdec(H, rxLLR, nIterationMax)
         for iCheck = 1:nCheck
             for iBit = check(iCheck).indexBitConnected'
                 msg = msgb2ch(iCheck, setdiff(getfield(check(iCheck),'indexBitConnected'),iBit));
-                msgch2b(iCheck, iBit) = 2*atanh(prod(tanh(msg/2)));
+                msgch2b(iCheck, iBit) = (1-2*syndrome(iCheck,1))*2*atanh(prod(tanh(msg/2)));
             end
         end
         messageBit = sum(msgch2b, 1) + messageChannel;
         % Hard decision, then exit or continue
         cHat(messageBit >= 0) = 0;
         cHat(messageBit < 0) = 1;
-        if sum( mod(cHat * H', 2) ) == 0
+        if mod(H*cHat', 2) == syndrome
             success = 1;
             return;
         end

@@ -33,25 +33,11 @@ class peg():
         self.nvar = nvar
         self.nchk = nchk
         self.H = np.zeros((nchk, nvar), dtype = np.int32)
-        self.sym_degrees = np.zeros(nvar, dtype = np.int32)
         self.chk_degrees = np.zeros(nchk, dtype = np.int32)
-        self.I_edge_chk2var = []
-        self.I_edge_var2chk = []
         self.girth = 1000
-        for chk in range(nchk):
-            self.I_edge_chk2var.append([])
-            for var in range(nvar):
-                self.I_edge_chk2var[chk].append(0)
-        for var in range(nvar):
-            self.I_edge_var2chk.append([])
-            for chk in range(nchk):
-                self.I_edge_var2chk[var].append(0)
     
     def grow_edge(self, var, chk):
-        self.I_edge_chk2var[chk][var] = 1
-        self.I_edge_var2chk[var][chk] = 1
         self.H[chk, var] = 1
-        self.sym_degrees[var] += 1
         self.chk_degrees[chk] += 1
 
     def bfs(self, var):
@@ -99,14 +85,6 @@ class peg():
                 index.append(i)
                 degree.append(self.chk_degrees[i])
         return index[find_smallest(degree)]
-
-    def _print(self):
-        print "I_edge_chk2var"
-        for i in range(len(self.I_edge_chk2var)):
-            print self.I_edge_chk2var[i]
-        print "I_edge_var2chk"
-        for i in range(len(self.I_edge_var2chk)):
-            print self.I_edge_var2chk[i]
 
     def progressive_edge_growth(self):
         for var in range(self.nvar):

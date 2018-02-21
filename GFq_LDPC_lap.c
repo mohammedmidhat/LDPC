@@ -457,7 +457,7 @@ void GFq_LDPC_lap(int iteration, int num_trials, double p, double *errors)
   double **logfna;
   void (*channel)(int x[], int y[], double p, double **logfna) = lap;
 
-  InitSumProductDecoderSyndrome("my_NB.txt");
+  InitSumProductDecoderSyndrome("547_NB.txt");
 
   s = malloc(sizeof(int) * m);  // syndrome
   x = malloc(sizeof(int) * n);  // source

@@ -1,3 +1,6 @@
+// Binary LDPC decoder, called in by driver code in the main() method
+
+
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
