@@ -9,12 +9,8 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+#include <limits.h>
 
-
-#define INT   8
-#define FRAC    8
-#define INT_LEVELS  pow(2,INT-1)
-#define FRAC_LEVELS   pow(2,FRAC)
 
 
 int n, m;
@@ -22,18 +18,7 @@ int rmax, cmax;
 int *row_weight, *col_weight;
 int **row_col;
 
-
-double float_to_fix(double val){
-  double intermed = round(val*FRAC_LEVELS);
-  double result = intermed/FRAC_LEVELS;
-  if(result > INT_LEVELS-1){
-    return INT_LEVELS-1;
-  } else if(result < -INT_LEVELS){
-    return -INT_LEVELS;
-  } else{
-    return result;
-  }
-}
+FILE *debug;
 
 double atanh2(double x)
 {
@@ -162,6 +147,7 @@ int dec(double q0[], int s[], int loop_max, int x[])
         sum += qin[i][j];
       for (j = 0; j < col_weight[i]; j++) {
         double qout = sum - qin[i][j];
+        //fprintf(debug, "%.2f ", qout);
         if (qout < 0) {
           *LogTanhtin_row[i][j] = -qout;
           *Sgntin_row[i][j] = 1;
@@ -170,40 +156,47 @@ int dec(double q0[], int s[], int loop_max, int x[])
           *Sgntin_row[i][j] = 0;
         }
       }
+      //fprintf(debug, "\n");
     }
 
     for (j = 0; j < m; j++) {
       int sgnprod = s[j];
-      double logprod = 0;
+      for (k = 0; k < row_weight[j]; k++){
+        sgnprod ^= Sgntin[j][k];
+      }
+
       for (k = 0; k < row_weight[j]; k++) {
-        double min_msg = 0;
+        double min_msg = 200;
         for (l = 0; l < row_weight[j]; l++) {
           if(l != k){
-            sgnprod ^= Sgntin[j][l];
-            if(abs(LogTanhtin[j][l]) < min_msg){
-              min_msg = abs(LogTanhtin[j][l]);
+            if(fabs(LogTanhtin[j][l]) < min_msg){
+              min_msg = fabs(LogTanhtin[j][l]);
             }
           }
         }
         if(sgnprod != Sgntin[j][k]){
           *qin_row[j][k] = -min_msg;
+          //fprintf(debug, "%.2f ", -min_msg);
         }
         else{
           *qin_row[j][k] = min_msg;
+          //fprintf(debug, "%.2f ", min_msg);
         }
       }
+      //fprintf(debug, "\n");
     }
-
+    
     for (i = 0; i < n; i++) {
       double sum = q0[i];
       for (j = 0; j < col_weight[i]; j++) {
         sum += qin[i][j];
       }
+      //fprintf(debug, "%.2f ", sum);
 
       tmp_bit[i] = (sum < 0) ? 1 : 0;
     }
-    //printf("%2d:HamDist(x)=%d\n ", loop+1, HamDist(x, tmp_bit, n));
-
+    //fprintf(debug, "\n");
+    
     enc(tmp_bit, tmp_s);
     i = HamDist(s, tmp_s, m);
     
@@ -237,7 +230,7 @@ void initdec(char *s)
 
   {//skip n lines
     for (i = 0; i < n; i++) {
-      for (j = 0; j < col_weight[i]; j++)
+      for (j = 0; j < cmax; j++)
         fscanf(fp, "%*d");
     }
   }
@@ -314,6 +307,7 @@ void test_code_min_sum_B_cw_noise_gen(char *code_filename, int iteration, int tr
   for (i = 0; i < trials; i++) {
     for (j = 0; j < n; j++) {
       x[j] = rand() & 1;
+      //x[j] = 0;
     }
     
     enc(x, s);
@@ -345,6 +339,8 @@ void test_code_min_sum_B(char *code_filename, int iteration, int *x, int *s, int
 
   // Start Timer
   clock_t start = clock(), diff;
+
+  //debug = fopen("debug.txt", "wt");
     
   dec_result = dec(q0, s, iteration, x);
 
@@ -353,6 +349,8 @@ void test_code_min_sum_B(char *code_filename, int iteration, int *x, int *s, int
   } else {
     if(HamDist(tmp_bit, x, n) != 0) errors[1]++;
   }
+
+  //fclose(debug);
 
   // End Timer
   diff = clock() - start;

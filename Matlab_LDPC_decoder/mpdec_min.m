@@ -7,8 +7,8 @@
 % Modified : 8/18/2017
 
 
-function [cHat, nIteration, success] = mpdec_min(H, rxLLR, nIterationMax)
-    
+function [cHat, nIteration, success] = mpdec_min(H, rxLLR, nIterationMax, syndrome)
+    file_ID = fopen('debug_mat.txt', 'w');
     success = 0;
     % Code structure
     % Caution: Move this part out for efficiency, as an independent preprocessing function.
@@ -32,20 +32,30 @@ function [cHat, nIteration, success] = mpdec_min(H, rxLLR, nIterationMax)
     cHat = zeros(1,nBit);
     for nIteration = 1:nIterationMax
         msgb2ch(indexLinear) = messageBit(indexBit).' - msgch2b(indexLinear);
+        for i = 1:nBit
+            indices = find(msgb2ch(:,i));
+            fprintf(file_ID, '%.2f ', full(msgb2ch(indices,i)));
+            fprintf(file_ID,'\n');
+        end
         for iCheck = 1:nCheck
             for iBit = check(iCheck).indexBitConnected'
                 msg = msgb2ch(iCheck, setdiff(getfield(check(iCheck),'indexBitConnected'),iBit));
-                msgch2b(iCheck, iBit) = prod(sign(msg))*min(abs(msg));
+                msgch2b(iCheck, iBit) = (1-2*syndrome(iCheck,1))*prod(sign(msg))*min(abs(msg));
             end
+            indices = find(msgch2b(iCheck,:));
+            fprintf(file_ID, '%.2f ', full(msgch2b(iCheck,indices)));
+            fprintf(file_ID,'\n');
         end
         messageBit = sum(msgch2b, 1) + messageChannel;
+        fprintf(file_ID, '%.2f ', messageBit);
+        fprintf(file_ID,'\n');
         % Hard decision, then exit or continue
         cHat(messageBit >= 0) = 0;
         cHat(messageBit < 0) = 1;
-        if sum( mod(cHat * H', 2) ) == 0
+        if mod(H*cHat', 2) == syndrome
             success = 1;
             return;
         end
     end % for nIteration
-    
+    fclose(file_ID);   
 end % fxn

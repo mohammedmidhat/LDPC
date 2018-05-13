@@ -1,4 +1,3 @@
-
 % alist_to_mat
 % Reads an LDPC matrix in alist format
 % return a sparse representation of it

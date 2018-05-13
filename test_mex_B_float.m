@@ -4,12 +4,12 @@
 % Author: Mohammed Al Ai Baky
 % Created: 1/20/2018
 
-cw_noise_gen = 0;
+cw_noise_gen = 1;
 
-bit_err_prob = [0.1:-0.01:0.04];
+bit_err_prob = [0.08:-0.0025:0.04];
 total_err_count = cell(1,size(bit_err_prob,2));
 total_undet_err = cell(1,size(bit_err_prob,2));
-num_trials = 10000;
+num_trials = 100000;
 serial = 100;
 parallel = num_trials/serial;
 max_num_iter = 30;
@@ -21,9 +21,10 @@ if cw_noise_gen
         err_count = zeros(1,parallel);
         undet_err = zeros(1,parallel);
         
-        parfor (k = 1:parallel)
-            result = test_code_B_float('Frolov_1024_0.5.txt', max_num_iter,serial,bit_err_prob(1,j));
-            %result = test_code_min_sum_B('204.33.484.txt', max_num_iter,num_trials,bit_err_prob(1,j));
+        parfor (k = 1:parallel) %set to parfor
+            %result = test_code_B_float('Frolov_1024_0.5.txt', max_num_iter,serial,bit_err_prob(1,j));
+            %result = test_code_min_sum_B('Frolov_1024_0.5.txt', max_num_iter,serial,bit_err_prob(1,j));
+            result = test_code_min_sum_B_fixed('Frolov_1024_0.5.txt', max_num_iter,serial,bit_err_prob(1,j));
             err_count(1,k) = result(1)/num_trials;
             undet_err(1,k) = result(2)/num_trials;
         end
@@ -77,7 +78,7 @@ for i = 1:size(bit_err_prob,2)
 end
 
 loglog(bit_err_prob, err_rate,'--o');
-%hold on;
+hold on;
 loglog(bit_err_prob, undet_err_rate,'--o');
 title('(2048,1024) LDPC, max iterations = 30, dec alg = SPA, Frolov');
 xlabel('Bit Error Rate (BER)');

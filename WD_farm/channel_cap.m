@@ -17,7 +17,7 @@ function [cap shannon_limit] = channel_cap(conf_mat)
     y_size = conf_mat_size(1);
     x_size = conf_mat_size(2);
     
-    P_x = 1/13.0;
+    P_x = 1/x_size;
     P_y = zeros(1,y_size);
     for y = 1:y_size
         for x = 1:x_size

@@ -1,0 +1,140 @@
+#
+# There is insufficient memory for the Java Runtime Environment to continue.
+# Native memory allocation (malloc) failed to allocate 1048576 bytes for AllocateHeap
+# Possible reasons:
+#   The system is out of physical RAM or swap space
+#   In 32 bit mode, the process size limit was hit
+# Possible solutions:
+#   Reduce memory load on the system
+#   Increase physical memory or swap space
+#   Check if swap backing store is full
+#   Use 64 bit Java on a 64 bit OS
+#   Decrease Java heap size (-Xmx/-Xms)
+#   Decrease number of Java threads
+#   Decrease Java thread stack sizes (-Xss)
+#   Set larger code cache with -XX:ReservedCodeCacheSize=
+# This output file may be truncated or incomplete.
+#
+#  Out of Memory Error (memory/allocation.inline.hpp:61), pid=6008, tid=11584
+#
+# JRE version:  (7.0_60-b19) (build )
+# Java VM: Java HotSpot(TM) 64-Bit Server VM (24.60-b09 mixed mode windows-amd64 compressed oops)
+# Failed to write core dump. Minidumps are not enabled by default on client versions of Windows
+#
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x0000000001edf000):  JavaThread "Unknown thread" [_thread_in_vm, id=11584, stack(0x0000000002120000,0x0000000002220000)]
+
+Stack: [0x0000000002120000,0x0000000002220000]
+[error occurred during error reporting (printing stack bounds), id 0xc0000005]
+
+
+---------------  P R O C E S S  ---------------
+
+Java Threads: ( => current thread )
+
+Other Threads:
+
+=>0x0000000001edf000 (exited) JavaThread "Unknown thread" [_thread_in_vm, id=11584, stack(0x0000000002120000,0x0000000002220000)]
+
+VM state:not at safepoint (normal execution)
+
+VM Mutex/Monitor currently owned by a thread: None
+
+Heap
+ PSYoungGen      total 18944K, used 327K [0x00000000eb400000, 0x00000000ec900000, 0x0000000100000000)
+  eden space 16384K, 2% used [0x00000000eb400000,0x00000000eb451f28,0x00000000ec400000)
+  from space 2560K, 0% used [0x00000000ec680000,0x00000000ec680000,0x00000000ec900000)
+  to   space 2560K, 0% used [0x00000000ec400000,0x00000000ec400000,0x00000000ec680000)
+ ParOldGen       total 42496K, used 0K [0x00000000c1c00000, 0x00000000c4580000, 0x00000000eb400000)
+  object space 42496K, 0% used [0x00000000c1c00000,0x00000000c1c00000,0x00000000c4580000)
+ PSPermGen       total 21504K, used 676K [0x00000000bca00000, 0x00000000bdf00000, 0x00000000c1c00000)
+  object space 21504K, 3% used [0x00000000bca00000,0x00000000bcaa9390,0x00000000bdf00000)
+
+Card table byte_map: [0x0000000005220000,0x0000000005440000] byte_map_base: 0x0000000004c3b000
+
+Polling page: 0x0000000001c70000
+
+Code Cache  [0x0000000002220000, 0x0000000002490000, 0x0000000005220000)
+ total_blobs=38 nmethods=0 adapters=20 free_code_cache=48889Kb largest_free_block=50062528
+
+Compilation events (0 events):
+No events
+
+GC Heap History (0 events):
+No events
+
+Deoptimization events (0 events):
+No events
+
+Internal exceptions (0 events):
+No events
+
+Events (10 events):
+Event: 0.094 loading class 0x0000000001e0ffb0
+Event: 0.094 loading class 0x0000000001e0ffb0 done
+Event: 0.094 loading class 0x0000000001e10000
+Event: 0.095 loading class 0x0000000001e10000 done
+Event: 0.095 loading class 0x0000000001e10050
+Event: 0.096 loading class 0x0000000001e10050 done
+Event: 0.098 loading class 0x0000000001e10db0
+Event: 0.099 loading class 0x0000000001e10db0 done
+Event: 0.099 loading class 0x0000000001e109d0
+Event: 0.099 loading class 0x0000000001e109d0 done
+
+
+Dynamic libraries:
+0x000000013f2d0000 - 0x000000013f303000 	C:\Program Files\MATLAB\R2015b\sys\java\jre\win64\jre\bin\java.exe
+0x0000000077bf0000 - 0x0000000077d8f000 	C:\windows\SYSTEM32\ntdll.dll
+0x0000000077ad0000 - 0x0000000077bef000 	C:\windows\system32\kernel32.dll
+0x000007fefdad0000 - 0x000007fefdb3a000 	C:\windows\system32\KERNELBASE.dll
+0x000007fefed00000 - 0x000007fefeddb000 	C:\windows\system32\ADVAPI32.dll
+0x000007feffd00000 - 0x000007feffd9f000 	C:\windows\system32\msvcrt.dll
+0x000007fefdc80000 - 0x000007fefdc9f000 	C:\windows\SYSTEM32\sechost.dll
+0x000007feff690000 - 0x000007feff7bd000 	C:\windows\system32\RPCRT4.dll
+0x00000000779d0000 - 0x0000000077aca000 	C:\windows\system32\USER32.dll
+0x000007feffa90000 - 0x000007feffaf7000 	C:\windows\system32\GDI32.dll
+0x000007fefedf0000 - 0x000007fefedfe000 	C:\windows\system32\LPK.dll
+0x000007feff2a0000 - 0x000007feff36b000 	C:\windows\system32\USP10.dll
+0x000007fefbc60000 - 0x000007fefbe54000 	C:\windows\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.7601.18837_none_fa3b1e3d17594757\COMCTL32.dll
+0x000007feff610000 - 0x000007feff681000 	C:\windows\system32\SHLWAPI.dll
+0x000007feffa60000 - 0x000007feffa8e000 	C:\windows\system32\IMM32.DLL
+0x000007feff950000 - 0x000007feffa59000 	C:\windows\system32\MSCTF.dll
+0x0000000072840000 - 0x0000000072879000 	C:\PROGRA~2\Sophos\SOPHOS~1\SOPHOS~2.DLL
+0x0000000077da0000 - 0x0000000077da7000 	C:\windows\system32\PSAPI.DLL
+0x000000006e740000 - 0x000000006e812000 	C:\Program Files\MATLAB\R2015b\sys\java\jre\win64\jre\bin\msvcr100.dll
+0x000000006db40000 - 0x000000006e312000 	C:\Program Files\MATLAB\R2015b\sys\java\jre\win64\jre\bin\server\jvm.dll
+0x000007fef72c0000 - 0x000007fef72c9000 	C:\windows\system32\WSOCK32.dll
+0x000007fefef20000 - 0x000007fefef6d000 	C:\windows\system32\WS2_32.dll
+0x000007fefede0000 - 0x000007fefede8000 	C:\windows\system32\NSI.dll
+0x000007fefbfb0000 - 0x000007fefbfeb000 	C:\windows\system32\WINMM.dll
+0x00000000733f0000 - 0x00000000733ff000 	C:\Program Files\MATLAB\R2015b\sys\java\jre\win64\jre\bin\verify.dll
+0x0000000072c10000 - 0x0000000072c38000 	C:\Program Files\MATLAB\R2015b\sys\java\jre\win64\jre\bin\java.dll
+0x0000000072c80000 - 0x0000000072c95000 	C:\Program Files\MATLAB\R2015b\sys\java\jre\win64\jre\bin\zip.dll
+
+VM Arguments:
+java_command: com.mathworks.fatalexit.FatalExitFrame C:\Users\mitadm\AppData\Local\Temp\matlab_crash_dump.9772-1 -lucky
+Launcher Type: SUN_STANDARD
+
+Environment Variables:
+PATH=C:\Program Files\MATLAB\R2015b\bin\win64;C:\windows\system32;C:\windows;C:\windows\System32\Wbem;C:\windows\System32\WindowsPowerShell\v1.0\;C:\Program Files (x86)\PharosSystems\Core;C:\Program Files\MATLAB\R2015b\runtime\win64;C:\Program Files\MATLAB\R2015b\bin;C:\Program Files\MATLAB\R2015b\polyspace\bin;C:\Program Files\Git\cmd;C:\Program Files\nodejs\;C:\Users\mitadm\Downloads\dfu-util-0.8-binaries\win32-mingw32;C:\Users\mitadm\AppData\Local\Programs\Python\Python36;C:\Program Files\VanDyke Software\Clients\;C:\Program Files (x86)\Windows Kits\8.1\Windows Performance Toolkit\;C:\Program Files\Microsoft SQL Server\110\Tools\Binn\;C:\Program Files (x86)\Microsoft SDKs\TypeScript\1.0\;C:\Program Files\Microsoft SQL Server\120\Tools\Binn\;C:\Program Files (x86)\Skype\Phone\;C:\Program Files\MySQL\MySQL Utilities 1.6\;C:\Users\mitadm\AppData\Roaming\npm;C:\Users\mitadm\Downloads\dfu-util-0.8-binaries\win32-mingw32
+USERNAME=mitadm
+OS=Windows_NT
+PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 42 Stepping 7, GenuineIntel
+
+
+
+---------------  S Y S T E M  ---------------
+
+OS: Windows 7 , 64 bit Build 7601 Service Pack 1
+
+CPU:total 4 (2 cores per cpu, 2 threads per core) family 6 model 42 stepping 7, cmov, cx8, fxsr, mmx, sse, sse2, sse3, ssse3, sse4.1, sse4.2, popcnt, avx, aes, ht, tsc, tscinvbit
+
+Memory: 4k page, physical 4072464k(228688k free), swap 8890468k(5932k free)
+
+vm_info: Java HotSpot(TM) 64-Bit Server VM (24.60-b09) for windows-amd64 JRE (1.7.0_60-b19), built on May  7 2014 12:55:18 by "java_re" with unknown MS VC++:1600
+
+time: Sun May 06 19:16:11 2018
+elapsed time: 0 seconds
+

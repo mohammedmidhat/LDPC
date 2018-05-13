@@ -156,8 +156,8 @@ int main(int argc, char **argv){
 	int i, j, k, var, smallest_degree_chk, chk;
 	int col_weight_max, row_weight_max, row_weight_counter;
 
-	nvar = 16000;
-	nchk = 1600;
+	nvar = 204;
+	nchk = 102;
 
 	degree_sequence = (int*) malloc(nvar*sizeof(int));
 	for(i = 0; i < nvar; i++){

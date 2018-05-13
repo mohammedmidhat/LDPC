@@ -15,6 +15,7 @@ int rmax, cmax;
 int *row_weight, *col_weight;
 int **row_col;
 
+FILE *debug;
 
 double atanh2(double x)
 {
@@ -143,6 +144,7 @@ int dec(double q0[], int s[], int loop_max, int x[])
         sum += qin[i][j];
       for (j = 0; j < col_weight[i]; j++) {
         double qout = sum - qin[i][j];
+        //fprintf(debug, "%.2f ", qout);
         if (qout < 0) {
           *LogTanhtin_row[i][j] = logtanh2(-qout);
           *Sgntin_row[i][j] = 1;
@@ -150,8 +152,8 @@ int dec(double q0[], int s[], int loop_max, int x[])
           *LogTanhtin_row[i][j] = logtanh2(qout);
           *Sgntin_row[i][j] = 0;
         }
-        //printf("v_msg_%d_%d = %d",i,j,qout);
       }
+      //fprintf(debug, "\n");
     }
 
     for (j = 0; j < m; j++) {
@@ -166,12 +168,13 @@ int dec(double q0[], int s[], int loop_max, int x[])
         double tout = atanh2(exp(logprod - LogTanhtin[j][k]));
         if(sgnprod != Sgntin[j][k]){
           *qin_row[j][k] = -tout;
-          //printf("c_msg_%d_%d = %d",j,k,-tout);
+          //fprintf(debug, "%.2f ", -tout);
         } else{
           *qin_row[j][k] = tout;
-          //printf("c_msg_%d_%d = %d",j,k,tout);
+          //fprintf(debug, "%.2f ", tout);
         }
       }
+      //fprintf(debug, "\n");
     }
 
     for (i = 0; i < n; i++) {
@@ -179,10 +182,11 @@ int dec(double q0[], int s[], int loop_max, int x[])
       for (j = 0; j < col_weight[i]; j++) {
         sum += qin[i][j];
       }
+      //fprintf(debug, "%.2f ", sum);
 
       tmp_bit[i] = (sum < 0) ? 1 : 0;
     }
-    //printf("%2d:HamDist(x)=%d\n ", loop+1, HamDist(x, tmp_bit, n));
+    //fprintf(debug, "\n");
 
     enc(tmp_bit, tmp_s);
     i = HamDist(s, tmp_s, m);
@@ -295,6 +299,7 @@ void test_code_B_float_cw_noise_gen(char *code_filename, int iteration, int tria
   for (i = 0; i < trials; i++) {
     for (j = 0; j < n; j++) {
       x[j] = rand() & 1;
+      //x[j] = 0;
     }
     
     enc(x, s);
@@ -327,6 +332,8 @@ void test_code_B_float(char *code_filename, int iteration, int *x, int *s, int *
   // Start Timer
   clock_t start = clock(), diff;
     
+  //debug = fopen("debug.txt", "wt");
+
   dec_result = dec(q0, s, iteration, x);
 
   if(dec_result){
@@ -334,6 +341,8 @@ void test_code_B_float(char *code_filename, int iteration, int *x, int *s, int *
   } else {
     if(HamDist(tmp_bit, x, n) != 0) errors[1]++;
   }
+
+  //fclose(debug);
 
   // End Timer
   diff = clock() - start;

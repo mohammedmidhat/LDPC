@@ -12,7 +12,6 @@
 #define page_size 18336
 #define QLC   4
 #define CW_per_page   33
-#define dec_nonconvergence_detection_loop   6
 // If Q is defined, GF(Q) arithmetic is used.
 // Else, let Log2Q defined and QF(2^Log2Q) arithmetic is used.
 
@@ -467,11 +466,6 @@ int dec(double **logfna, int z[], int loop_max)
     //printf("HamDist(s)=%g\n", sum);
     if (sum == 0)           // nothing more can be done
       return 0;
-
-    /*if (prev <= sum) nodecr++;
-    else nodecr = 0;
-    if (nodecr > dec_nonconvergence_detection_loop) break; // no conversion
-    prev = sum;*/
   }
 
   return 1;

@@ -8,28 +8,22 @@
 #include <time.h>
 #include "tajj.h"
 
-#define INT   4
-#define FRAC    4
-#define INT_LEVELS  pow(2,INT-1)
-#define FRAC_LEVELS   pow(2,FRAC)
+#define INT   8
+#define FRAC  8
+#define FRAC_LEVELS 256
 
-double float_to_fix(double val){
-  double intermed = round(val*FRAC_LEVELS);
-  double result = intermed/FRAC_LEVELS;
-  if(result > INT_LEVELS-1){
-    return INT_LEVELS-1;
-  } else if(result < -INT_LEVELS){
-    return -INT_LEVELS;
-  } else{
-    return result;
+void display_two_comp(int val){
+  int i;
+  for(i = INT+FRAC-1; i >= 0; i--){
+    printf("%d", (val*FRAC_LEVELS >> i)&1);
   }
+  printf("\n");
 }
 
 void main(void){
-	int i;
-	double x[5] = {8, -8, -8.125, 2.35, -4.31};
-
-	for(i = 0; i < 5; i++){
-		printf("%.3f ", float_to_fix(x[i]));
-	}
+  double y = 42.793;
+  int i;
+  for(i = INT+FRAC-1; i >= 0; i--){
+    printf("%d", ((int)(y*FRAC_LEVELS) >> i)&1);
+  }
 }

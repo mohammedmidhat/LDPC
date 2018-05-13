@@ -1,9 +1,9 @@
-H = alist_to_mat('204.33.484.txt');
+H = alist_to_mat('204.33.484_sorted.txt');
 [m n] = size(H);
-bit_err_prob = [0.007:-0.0005:0.005];
+bit_err_prob = [0.01];
 err_count_array = zeros(1,size(bit_err_prob,2));
 undet_err_array = zeros(1,size(bit_err_prob,2));
-num_trials = 10;
+num_trials = 1;
 tic;
 times = zeros(size(bit_err_prob, 2), num_trials);
 for j = 1:size(bit_err_prob,2)
@@ -19,7 +19,7 @@ for j = 1:size(bit_err_prob,2)
         llr(codeword_rec == 1) = log(bit_err_prob(1,j)/(1-bit_err_prob(1,j)));
         syndrome = mod(H*codeword',2);
         
-        [cw num_iter suc] = mpdec(H, llr, 30, syndrome);
+        [cw num_iter suc] = mpdec_min(H, llr, 30, syndrome);
         if(~isequal(codeword,cw))
             err_count = err_count + 1;
             if(suc)
@@ -31,6 +31,7 @@ for j = 1:size(bit_err_prob,2)
     undet_err_array(1,j) = undet_err;
 end
 t_post = toc;
+
 loglog(bit_err_prob, err_count_array);
 hold on;
 loglog(bit_err_prob, undet_err_array);
